@@ -51,12 +51,17 @@ export class ParticleEmitter {
   private finished: boolean = false
   private subEmitterMap: Map<number, SubEmitterEntry> = new Map()
   private system: ParticleSystem | null = null
+  isSubEmitter: boolean = false
 
   constructor(config: EmitterConfig, pool: ParticlePool, system?: ParticleSystem) {
     this.config = config
     this.pool = pool
     this.ownerKey = hashCode(config.id)
     this.system = system ?? null
+  }
+
+  markAsSubEmitter(): void {
+    this.isSubEmitter = true
   }
 
   registerSubEmitters(subEmitters: { event: SubEmitterEvent; lifecyclePercent?: number; emitter: EmitterConfig }[], system: ParticleSystem): void {
@@ -66,7 +71,11 @@ export class ParticleEmitter {
       const subConfig = { ...sub.emitter }
       subConfig.position = [0, 0, 0]
       subConfig.burstMode = true
+      if (!subConfig.burstCount || subConfig.burstCount <= 0) {
+        subConfig.burstCount = 50
+      }
       const subEmitter = new ParticleEmitter(subConfig, this.pool, system)
+      subEmitter.markAsSubEmitter()
       const key = (this.ownerKey << 8) | (index & 0xff)
       this.subEmitterMap.set(key, {
         event: sub.event,
@@ -79,6 +88,7 @@ export class ParticleEmitter {
   }
 
   emit(dt: number): void {
+    if (this.isSubEmitter) return
     if (this.finished) return
 
     this.elapsed += dt
@@ -115,16 +125,59 @@ export class ParticleEmitter {
   }
 
   emitAtPosition(position: [number, number, number]): void {
-    this.elapsed = 0
-    this.burstFired = false
-    this.finished = false
-    this.emitAccumulator = 0
-    const savedPos = this.config.position
-    this.config.position = position
-    for (let i = 0; i < this.config.burstCount; i++) {
-      this.spawnParticle()
+    const burstCount = this.config.burstCount > 0 ? this.config.burstCount : 50
+    for (let i = 0; i < burstCount; i++) {
+      this.spawnParticleAtPosition(position)
     }
-    this.config.position = savedPos
+  }
+
+  private spawnParticleAtPosition(position: [number, number, number]): void {
+    const idx = this.pool.acquire(this.ownerKey)
+    if (idx === -1) return
+
+    const pos = this.getShapePosition()
+    this.pool.positions[idx * 3] = pos[0] + position[0]
+    this.pool.positions[idx * 3 + 1] = pos[1] + position[1]
+    this.pool.positions[idx * 3 + 2] = pos[2] + position[2]
+
+    const speed = randRange(this.config.initialSpeed[0], this.config.initialSpeed[1])
+    const dir = this.getDirection(pos)
+    this.pool.velocities[idx * 3] = dir[0] * speed
+    this.pool.velocities[idx * 3 + 1] = dir[1] * speed
+    this.pool.velocities[idx * 3 + 2] = dir[2] * speed
+
+    this.pool.initialSpeeds[idx] = speed
+
+    this.pool.accelerations[idx * 3] = this.config.acceleration[0]
+    this.pool.accelerations[idx * 3 + 1] = this.config.acceleration[1]
+    this.pool.accelerations[idx * 3 + 2] = this.config.acceleration[2]
+
+    const lifetime = randRange(this.config.lifetime[0], this.config.lifetime[1])
+    this.pool.ages[idx] = 0
+    this.pool.lifetimes[idx] = lifetime
+
+    const initColor = this.config.colorGradient.length > 0
+      ? this.config.colorGradient[0]
+      : { color: [1, 1, 1] as [number, number, number], alpha: 1 }
+    this.pool.colors[idx * 4] = initColor.color[0]
+    this.pool.colors[idx * 4 + 1] = initColor.color[1]
+    this.pool.colors[idx * 4 + 2] = initColor.color[2]
+    this.pool.colors[idx * 4 + 3] = initColor.alpha
+
+    const initSize = this.config.sizeCurve.points.length > 0
+      ? this.config.sizeCurve.points[0].value
+      : 1
+    this.pool.sizes[idx] = initSize
+
+    const initOpacity = this.config.opacityCurve.points.length > 0
+      ? this.config.opacityCurve.points[0].value
+      : 1
+    this.pool.opacities[idx] = initOpacity
+
+    this.pool.rotations[idx] = randRange(this.config.rotationSpeed[0], this.config.rotationSpeed[1])
+
+    this.pool.prevAge[idx] = 0
+    this.pool.triggeredLifecycleEvents.fill(0, idx * 8, idx * 8 + 8)
   }
 
   spawnParticle(): void {
@@ -189,7 +242,7 @@ export class ParticleEmitter {
 
   update(dt: number): void {
     const pool = this.pool
-    const N = pool.alive.length
+    const alive = pool.getAliveList()
     const colorGradient = this.config.colorGradient
     const sizeCurve = this.config.sizeCurve
     const opacityCurve = this.config.opacityCurve
@@ -209,8 +262,8 @@ export class ParticleEmitter {
       }
     })
 
-    for (let i = 0; i < N; i++) {
-      if (!pool.alive[i]) continue
+    for (let j = 0; j < alive.length; j++) {
+      const i = alive[j]
       if (pool.ownerIds[i] !== myKey) continue
 
       pool.prevAge[i] = pool.ages[i]

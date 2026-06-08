@@ -8,16 +8,16 @@ export class CollisionEngine {
     const positions = pool.positions
     const velocities = pool.velocities
     const lifetimes = pool.lifetimes
-    const alive = pool.alive
-    const N = alive.length
+    const alive = pool.getAliveList()
 
-    for (let i = 0; i < N; i++) {
-      if (!alive[i]) continue
+    for (let j = 0; j < alive.length; j++) {
+      const i = alive[j]
 
       const px = positions[i * 3]
       const py = positions[i * 3 + 1]
       const pz = positions[i * 3 + 2]
 
+      let particleReleased = false
       for (let p = 0; p < planes.length; p++) {
         const plane = planes[p]
         const n = plane.normal
@@ -69,9 +69,11 @@ export class CollisionEngine {
 
         if (plane.killOnCollision) {
           pool.release(i)
+          particleReleased = true
           break
         }
       }
+      if (particleReleased) continue
     }
   }
 }

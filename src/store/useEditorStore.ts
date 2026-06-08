@@ -7,6 +7,7 @@ interface EditorState {
   selectedEmitterId: string | null
   isPlaying: boolean
   elapsedTime: number
+  resetTrigger: number
   background: 'black' | 'white' | 'checker' | 'custom'
   helpersVisible: boolean
   showPresets: boolean
@@ -30,6 +31,7 @@ interface EditorActions {
   setPlaying: (playing: boolean) => void
   setElapsedTime: (time: number) => void
   resetTime: () => void
+  resetAll: () => void
   setBackground: (bg: 'black' | 'white' | 'checker' | 'custom') => void
   toggleHelpers: () => void
   togglePresets: () => void
@@ -55,6 +57,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   selectedEmitterId: defaultEmitter.id,
   isPlaying: false,
   elapsedTime: 0,
+  resetTrigger: 0,
   background: 'black',
   helpersVisible: true,
   showPresets: false,
@@ -142,6 +145,8 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   setElapsedTime: (time) => set({ elapsedTime: time }),
 
   resetTime: () => set({ elapsedTime: 0 }),
+
+  resetAll: () => set((state) => ({ elapsedTime: 0, resetTrigger: state.resetTrigger + 1 })),
 
   setBackground: (bg) =>
     set((state) => ({

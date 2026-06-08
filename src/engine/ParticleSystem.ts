@@ -26,7 +26,6 @@ export class ParticleSystem {
     })
 
     this.subEmitterInstances.forEach(emitter => {
-      emitter.emit(dt)
       emitter.update(dt)
     })
 

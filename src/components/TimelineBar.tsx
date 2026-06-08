@@ -9,7 +9,7 @@ export default function TimelineBar() {
     scene,
     selectedEmitterId,
     setPlaying,
-    resetTime,
+    resetAll,
     setElapsedTime,
     updateEmitter,
   } = useEditorStore()
@@ -27,8 +27,8 @@ export default function TimelineBar() {
   }, [isPlaying, setPlaying])
 
   const handleReset = useCallback(() => {
-    resetTime()
-  }, [resetTime])
+    resetAll()
+  }, [resetAll])
 
   const handleLoopToggle = useCallback(() => {
     if (!selectedEmitterId) return

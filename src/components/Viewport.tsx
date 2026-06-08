@@ -24,6 +24,7 @@ export default function Viewport() {
     selectedEmitterId,
     background,
     helpersVisible,
+    resetTrigger,
   } = useEditorStore()
 
   const updateRendererFromEmitter = useCallback((emitter: EmitterConfig | undefined) => {
@@ -104,10 +105,10 @@ export default function Viewport() {
       const fpsElapsed = time - fpsTime.current
       if (fpsElapsed >= 500) {
         setFps(Math.round((fpsFrames.current / fpsElapsed) * 1000))
+        setParticleCount(pool.getCount())
         fpsFrames.current = 0
         fpsTime.current = time
       }
-      setParticleCount(pool.getCount())
 
       rafRef.current = requestAnimationFrame(animate)
     }
@@ -151,6 +152,12 @@ export default function Viewport() {
       renderer.addHelper(helper)
     })
   }, [scene.emitters, scene.forceFields, scene.collisions])
+
+  useEffect(() => {
+    const system = systemRef.current
+    if (!system) return
+    system.reset()
+  }, [resetTrigger])
 
   useEffect(() => {
     const renderer = rendererRef.current

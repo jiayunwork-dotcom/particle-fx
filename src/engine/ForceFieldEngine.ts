@@ -14,11 +14,10 @@ export class ForceFieldEngine {
 
     const positions = pool.positions
     const velocities = pool.velocities
-    const alive = pool.alive
-    const N = alive.length
+    const alive = pool.getAliveList()
 
-    for (let i = 0; i < N; i++) {
-      if (!alive[i]) continue
+    for (let j = 0; j < alive.length; j++) {
+      const i = alive[j]
 
       const px = positions[i * 3]
       const py = positions[i * 3 + 1]

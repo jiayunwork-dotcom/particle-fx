@@ -18,7 +18,7 @@ export class ParticlePool {
   readonly triggeredLifecycleEvents: Uint8Array
 
   private freeList: number[]
-  private count: number
+  private aliveList: number[]
 
   constructor() {
     const N = MAX_PARTICLES
@@ -42,7 +42,7 @@ export class ParticlePool {
     for (let i = N - 1; i >= 0; i--) {
       this.freeList.push(i)
     }
-    this.count = 0
+    this.aliveList = []
   }
 
   acquire(ownerKey: number): number {
@@ -50,17 +50,22 @@ export class ParticlePool {
     const idx = this.freeList.pop()!
     this.alive[idx] = 1
     this.ownerIds[idx] = ownerKey
-    this.count++
+    this.aliveList.push(idx)
     return idx
   }
 
   release(index: number): void {
     if (index < 0 || index >= MAX_PARTICLES) return
     if (!this.alive[index]) return
+    const listIdx = this.aliveList.indexOf(index)
+    if (listIdx !== -1) {
+      const last = this.aliveList.length - 1
+      this.aliveList[listIdx] = this.aliveList[last]
+      this.aliveList.pop()
+    }
     this.alive[index] = 0
     this.prevAge[index] = 0
     this.triggeredLifecycleEvents.fill(0, index * 8, index * 8 + 8)
-    this.count--
     this.freeList.push(index)
   }
 
@@ -72,11 +77,19 @@ export class ParticlePool {
     for (let i = MAX_PARTICLES - 1; i >= 0; i--) {
       this.freeList.push(i)
     }
-    this.count = 0
+    this.aliveList = []
   }
 
   getCount(): number {
-    return this.count
+    return this.aliveList.length
+  }
+
+  getAliveCount(): number {
+    return this.aliveList.length
+  }
+
+  getAliveList(): readonly number[] {
+    return this.aliveList
   }
 
   isAlive(index: number): boolean {
