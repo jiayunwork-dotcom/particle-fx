@@ -1,0 +1,75 @@
+export const MAX_PARTICLES = 50000
+
+export class ParticlePool {
+  readonly positions: Float32Array
+  readonly velocities: Float32Array
+  readonly colors: Float32Array
+  readonly accelerations: Float32Array
+  readonly sizes: Float32Array
+  readonly opacities: Float32Array
+  readonly rotations: Float32Array
+  readonly ages: Float32Array
+  readonly lifetimes: Float32Array
+  readonly initialSpeeds: Float32Array
+  readonly alive: Uint8Array
+  readonly ownerIds: Uint32Array
+
+  private freeList: number[]
+  private count: number
+
+  constructor() {
+    const N = MAX_PARTICLES
+    this.positions = new Float32Array(N * 3)
+    this.velocities = new Float32Array(N * 3)
+    this.colors = new Float32Array(N * 4)
+    this.accelerations = new Float32Array(N * 3)
+    this.sizes = new Float32Array(N)
+    this.opacities = new Float32Array(N)
+    this.rotations = new Float32Array(N)
+    this.ages = new Float32Array(N)
+    this.lifetimes = new Float32Array(N)
+    this.initialSpeeds = new Float32Array(N)
+    this.alive = new Uint8Array(N)
+    this.ownerIds = new Uint32Array(N)
+
+    this.freeList = []
+    for (let i = N - 1; i >= 0; i--) {
+      this.freeList.push(i)
+    }
+    this.count = 0
+  }
+
+  acquire(ownerKey: number): number {
+    if (this.freeList.length === 0) return -1
+    const idx = this.freeList.pop()!
+    this.alive[idx] = 1
+    this.ownerIds[idx] = ownerKey
+    this.count++
+    return idx
+  }
+
+  release(index: number): void {
+    if (index < 0 || index >= MAX_PARTICLES) return
+    if (!this.alive[index]) return
+    this.alive[index] = 0
+    this.count--
+    this.freeList.push(index)
+  }
+
+  reset(): void {
+    this.alive.fill(0)
+    this.freeList = []
+    for (let i = MAX_PARTICLES - 1; i >= 0; i--) {
+      this.freeList.push(i)
+    }
+    this.count = 0
+  }
+
+  getCount(): number {
+    return this.count
+  }
+
+  isAlive(index: number): boolean {
+    return index >= 0 && index < MAX_PARTICLES && this.alive[index] === 1
+  }
+}
