@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { PanelRightOpen, Plus, Trash2 } from 'lucide-react'
+import { PanelRightOpen, Plus, Trash2, Upload, X } from 'lucide-react'
 import { useEditorStore } from '@/store/useEditorStore'
 import type { EmitterConfig, SubEmitterEvent } from '@/types/particle'
 import { createDefaultEmitter } from '@/types/particle'
@@ -345,11 +345,54 @@ export default function ParamPanel() {
         </FoldSection>
 
         <FoldSection title="纹理" defaultOpen={false}>
+          <div className="mb-2">
+            <label className="block text-[10px] text-[#888] mb-1">自定义贴图</label>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs rounded border border-[#3a3a55] bg-[#1a1a2e] text-[#888] hover:text-[#00f0ff] hover:border-[#00f0ff] transition-colors cursor-pointer">
+                <Upload size={12} />
+                <span>上传贴图</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      const dataUrl = reader.result as string
+                      update({ customTextureData: dataUrl, builtInShape: null })
+                    }
+                    reader.readAsDataURL(file)
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {emitter.customTextureData && (
+                <button
+                  onClick={() => update({ customTextureData: null })}
+                  className="flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded border border-[#3a3a55] bg-[#1a1a2e] text-[#888] hover:text-[#ff4444] hover:border-[#ff4444] transition-colors"
+                >
+                  <X size={12} />
+                  <span>清除</span>
+                </button>
+              )}
+            </div>
+            {emitter.customTextureData && (
+              <div className="mt-2">
+                <img
+                  src={emitter.customTextureData}
+                  alt="custom texture preview"
+                  className="w-16 h-16 rounded border border-[#3a3a55] object-contain bg-[#1a1a2e]"
+                />
+              </div>
+            )}
+          </div>
           <Select
             label="内置形状"
             value={emitter.builtInShape ?? 'softCircle'}
             options={builtInShapeOptions}
-            onChange={(v) => update({ builtInShape: v as EmitterConfig['builtInShape'] })}
+            onChange={(v) => update({ builtInShape: v as EmitterConfig['builtInShape'], customTextureData: null })}
           />
           <Select
             label="混合模式"

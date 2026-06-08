@@ -17,10 +17,12 @@ uniform vec3 uVelocity;
 
 varying vec2 vUv;
 varying vec4 vColor;
+varying float vFrameIndex;
 
 void main() {
   vUv = uv;
   vColor = instanceColor;
+  vFrameIndex = instanceFrameIndex;
 
   vec3 right;
   vec3 up;
@@ -60,6 +62,7 @@ void main() {
 const fragmentShader = `
 varying vec2 vUv;
 varying vec4 vColor;
+varying float vFrameIndex;
 
 uniform sampler2D uTexture;
 uniform bool uUseTexture;
@@ -75,7 +78,7 @@ void main() {
   if (uUseSpriteSheet) {
     float cols = uSpriteSheetSize.y;
     float rows = uSpriteSheetSize.x;
-    float frameIndex = floor(vColor.a * uFrameCount + 0.5);
+    float frameIndex = floor(vFrameIndex + 0.5);
     frameIndex = mod(frameIndex, uFrameCount);
     float col = mod(frameIndex, cols);
     float row = floor(frameIndex / cols);
@@ -132,6 +135,7 @@ export class ParticleRenderer {
   camera: THREE.PerspectiveCamera
   renderer: THREE.WebGLRenderer
   controls: OrbitControls
+  sceneHelpers: THREE.Group
   private material: THREE.ShaderMaterial
   private geometry: THREE.InstancedBufferGeometry
   private mesh: THREE.Mesh
@@ -148,6 +152,9 @@ export class ParticleRenderer {
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color(0x111111)
+
+    this.sceneHelpers = new THREE.Group()
+    this.scene.add(this.sceneHelpers)
 
     const aspect = canvas.clientWidth / canvas.clientHeight || 1
     this.camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000)
@@ -247,6 +254,7 @@ export class ParticleRenderer {
     const opacities = pool.opacities
     const rotations = pool.rotations
     const colors = pool.colors
+    const frameIndices = pool.frameIndices
     const N = alive.length
 
     let count = 0
@@ -269,7 +277,7 @@ export class ParticleRenderer {
       colorArr[i4 + 1] = colors[i * 4 + 1]
       colorArr[i4 + 2] = colors[i * 4 + 2]
       colorArr[i4 + 3] = colors[i * 4 + 3] * opacities[i]
-      frameArr[count] = 0
+      frameArr[count] = frameIndices[i]
       count++
     }
 
@@ -349,23 +357,27 @@ export class ParticleRenderer {
     if (texture) {
       this.material.uniforms.uTexture.value = texture
       this.material.uniforms.uUseTexture.value = true
+      this.material.uniforms.uBuiltInShape.value = 0
       this.currentTexture = texture
     } else {
-      this.material.uniforms.uTexture.value = this.builtInTextures.get('softCircle') || null
-      this.material.uniforms.uUseTexture.value = true
-      this.material.uniforms.uBuiltInShape.value = 1
+      this.material.uniforms.uTexture.value = null
+      this.material.uniforms.uUseTexture.value = false
       this.currentTexture = null
     }
   }
 
-  setSpriteSheet(rows: number, cols: number, frameCount: number): void {
-    if (rows > 1 || cols > 1) {
+  setSpriteSheetEnabled(enabled: boolean, rows: number, cols: number, frameCount: number): void {
+    if (enabled) {
       this.material.uniforms.uUseSpriteSheet.value = true
       this.material.uniforms.uSpriteSheetSize.value.set(rows, cols)
       this.material.uniforms.uFrameCount.value = frameCount
     } else {
       this.material.uniforms.uUseSpriteSheet.value = false
     }
+  }
+
+  setSpriteSheet(rows: number, cols: number, frameCount: number): void {
+    this.setSpriteSheetEnabled(rows > 1 || cols > 1, rows, cols, frameCount)
   }
 
   setBackground(type: string, customColor?: string): void {
@@ -409,6 +421,34 @@ export class ParticleRenderer {
     }
   }
 
+  clearHelpers(): void {
+    const disposeObj = (obj: THREE.Object3D) => {
+      const mesh = obj as THREE.Mesh
+      if (mesh.geometry) mesh.geometry.dispose()
+      if (mesh.material) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        mats.forEach((m) => m.dispose())
+      }
+    }
+    while (this.sceneHelpers.children.length > 0) {
+      const child = this.sceneHelpers.children[0]
+      child.traverse(disposeObj)
+      this.sceneHelpers.remove(child)
+    }
+  }
+
+  addHelper(obj: THREE.Object3D): void {
+    this.sceneHelpers.add(obj)
+  }
+
+  getScene(): THREE.Scene {
+    return this.scene
+  }
+
+  setHelpersVisible(visible: boolean): void {
+    this.sceneHelpers.visible = visible
+  }
+
   render(): void {
     this.controls.update()
     this.renderer.render(this.scene, this.camera)
@@ -426,6 +466,8 @@ export class ParticleRenderer {
     this.renderer.dispose()
     this.controls.dispose()
     this.builtInTextures.forEach(tex => tex.dispose())
+    this.clearHelpers()
+    this.scene.remove(this.sceneHelpers)
     if (this.gridHelper) {
       this.scene.remove(this.gridHelper)
       this.gridHelper.dispose()

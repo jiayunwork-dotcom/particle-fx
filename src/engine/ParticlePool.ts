@@ -11,8 +11,11 @@ export class ParticlePool {
   readonly ages: Float32Array
   readonly lifetimes: Float32Array
   readonly initialSpeeds: Float32Array
+  readonly frameIndices: Float32Array
   readonly alive: Uint8Array
   readonly ownerIds: Uint32Array
+  readonly prevAge: Float32Array
+  readonly triggeredLifecycleEvents: Uint8Array
 
   private freeList: number[]
   private count: number
@@ -29,8 +32,11 @@ export class ParticlePool {
     this.ages = new Float32Array(N)
     this.lifetimes = new Float32Array(N)
     this.initialSpeeds = new Float32Array(N)
+    this.frameIndices = new Float32Array(N)
     this.alive = new Uint8Array(N)
     this.ownerIds = new Uint32Array(N)
+    this.prevAge = new Float32Array(N)
+    this.triggeredLifecycleEvents = new Uint8Array(N * 8)
 
     this.freeList = []
     for (let i = N - 1; i >= 0; i--) {
@@ -52,12 +58,16 @@ export class ParticlePool {
     if (index < 0 || index >= MAX_PARTICLES) return
     if (!this.alive[index]) return
     this.alive[index] = 0
+    this.prevAge[index] = 0
+    this.triggeredLifecycleEvents.fill(0, index * 8, index * 8 + 8)
     this.count--
     this.freeList.push(index)
   }
 
   reset(): void {
     this.alive.fill(0)
+    this.prevAge.fill(0)
+    this.triggeredLifecycleEvents.fill(0)
     this.freeList = []
     for (let i = MAX_PARTICLES - 1; i >= 0; i--) {
       this.freeList.push(i)

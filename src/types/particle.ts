@@ -49,6 +49,7 @@ export interface EmitterConfig {
   rotationSpeed: [number, number]
   texture: string | null
   builtInShape: 'softCircle' | 'square' | 'star' | 'smoke' | null
+  customTextureData: string | null
   spriteSheet: { rows: number; cols: number } | null
   blendMode: BlendMode
   orientation: OrientationMode
@@ -123,6 +124,7 @@ export function createDefaultEmitter(): EmitterConfig {
     rotationSpeed: [0, 0],
     texture: null,
     builtInShape: 'softCircle',
+    customTextureData: null,
     spriteSheet: null,
     blendMode: 'additive',
     orientation: 'billboard',

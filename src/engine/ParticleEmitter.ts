@@ -1,6 +1,7 @@
-import type { EmitterConfig } from '@/types/particle'
+import type { EmitterConfig, SubEmitterEvent } from '@/types/particle'
 import { ParticlePool } from './ParticlePool'
 import { sampleCurve, sampleGradient } from './CurveInterpolator'
+import type { ParticleSystem } from './ParticleSystem'
 
 function randRange(min: number, max: number): number {
   return min + Math.random() * (max - min)
@@ -38,6 +39,8 @@ function hashCode(str: string): number {
   return hash >>> 0
 }
 
+type SubEmitterEntry = { event: SubEmitterEvent; lifecyclePercent?: number; emitter: ParticleEmitter; slotIndex: number }
+
 export class ParticleEmitter {
   config: EmitterConfig
   pool: ParticlePool
@@ -46,11 +49,33 @@ export class ParticleEmitter {
   private emitAccumulator: number = 0
   private burstFired: boolean = false
   private finished: boolean = false
+  private subEmitterMap: Map<number, SubEmitterEntry> = new Map()
+  private system: ParticleSystem | null = null
 
-  constructor(config: EmitterConfig, pool: ParticlePool) {
+  constructor(config: EmitterConfig, pool: ParticlePool, system?: ParticleSystem) {
     this.config = config
     this.pool = pool
     this.ownerKey = hashCode(config.id)
+    this.system = system ?? null
+  }
+
+  registerSubEmitters(subEmitters: { event: SubEmitterEvent; lifecyclePercent?: number; emitter: EmitterConfig }[], system: ParticleSystem): void {
+    this.subEmitterMap.clear()
+    this.system = system
+    subEmitters.forEach((sub, index) => {
+      const subConfig = { ...sub.emitter }
+      subConfig.position = [0, 0, 0]
+      subConfig.burstMode = true
+      const subEmitter = new ParticleEmitter(subConfig, this.pool, system)
+      const key = (this.ownerKey << 8) | (index & 0xff)
+      this.subEmitterMap.set(key, {
+        event: sub.event,
+        lifecyclePercent: sub.lifecyclePercent,
+        emitter: subEmitter,
+        slotIndex: index & 0x7,
+      })
+      system.registerSubEmitterInstance(subEmitter, this.config.id, index, sub.emitter.id)
+    })
   }
 
   emit(dt: number): void {
@@ -87,6 +112,19 @@ export class ParticleEmitter {
         this.spawnParticle()
       }
     }
+  }
+
+  emitAtPosition(position: [number, number, number]): void {
+    this.elapsed = 0
+    this.burstFired = false
+    this.finished = false
+    this.emitAccumulator = 0
+    const savedPos = this.config.position
+    this.config.position = position
+    for (let i = 0; i < this.config.burstCount; i++) {
+      this.spawnParticle()
+    }
+    this.config.position = savedPos
   }
 
   spawnParticle(): void {
@@ -133,6 +171,20 @@ export class ParticleEmitter {
     this.pool.opacities[idx] = initOpacity
 
     this.pool.rotations[idx] = randRange(this.config.rotationSpeed[0], this.config.rotationSpeed[1])
+
+    this.pool.prevAge[idx] = 0
+    this.pool.triggeredLifecycleEvents.fill(0, idx * 8, idx * 8 + 8)
+
+    const parentPos: [number, number, number] = [
+      this.pool.positions[idx * 3],
+      this.pool.positions[idx * 3 + 1],
+      this.pool.positions[idx * 3 + 2],
+    ]
+    this.subEmitterMap.forEach(entry => {
+      if (entry.event === 'birth') {
+        entry.emitter.emitAtPosition(parentPos)
+      }
+    })
   }
 
   update(dt: number): void {
@@ -143,20 +195,69 @@ export class ParticleEmitter {
     const opacityCurve = this.config.opacityCurve
     const myKey = this.ownerKey
 
+    const deathSubEmitters: ParticleEmitter[] = []
+    this.subEmitterMap.forEach(entry => {
+      if (entry.event === 'death') {
+        deathSubEmitters.push(entry.emitter)
+      }
+    })
+
+    const lifecycleEntries: SubEmitterEntry[] = []
+    this.subEmitterMap.forEach(entry => {
+      if (entry.event === 'lifecycle' && entry.lifecyclePercent !== undefined) {
+        lifecycleEntries.push(entry)
+      }
+    })
+
     for (let i = 0; i < N; i++) {
       if (!pool.alive[i]) continue
       if (pool.ownerIds[i] !== myKey) continue
 
+      pool.prevAge[i] = pool.ages[i]
       pool.ages[i] += dt
       const age = pool.ages[i]
       const lifetime = pool.lifetimes[i]
 
       if (age >= lifetime) {
+        const dyingPos: [number, number, number] = [
+          pool.positions[i * 3],
+          pool.positions[i * 3 + 1],
+          pool.positions[i * 3 + 2],
+        ]
         pool.release(i)
+        for (const sub of deathSubEmitters) {
+          sub.emitAtPosition(dyingPos)
+        }
         continue
       }
 
       const t = age / lifetime
+      const prevT = pool.prevAge[i] / lifetime
+
+      if (this.config.spriteSheet) {
+        const rows = this.config.spriteSheet.rows
+        const cols = this.config.spriteSheet.cols
+        const totalFrames = rows * cols
+        const frame = Math.floor(t * totalFrames)
+        pool.frameIndices[i] = Math.min(frame, totalFrames - 1)
+      }
+
+      for (const entry of lifecycleEntries) {
+        const pct = entry.lifecyclePercent!
+        const slot = entry.slotIndex
+        const triggeredOffset = i * 8 + slot
+        if (pool.triggeredLifecycleEvents[triggeredOffset] === 0) {
+          if (prevT < pct && t >= pct) {
+            pool.triggeredLifecycleEvents[triggeredOffset] = 1
+            const particlePos: [number, number, number] = [
+              pool.positions[i * 3],
+              pool.positions[i * 3 + 1],
+              pool.positions[i * 3 + 2],
+            ]
+            entry.emitter.emitAtPosition(particlePos)
+          }
+        }
+      }
 
       pool.velocities[i * 3] += pool.accelerations[i * 3] * dt
       pool.velocities[i * 3 + 1] += pool.accelerations[i * 3 + 1] * dt

@@ -1,8 +1,10 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
+import * as THREE from 'three'
 import { Eye, Sun, Grid3x3 } from 'lucide-react'
 import { ParticleRenderer } from '@/renderer/ParticleRenderer'
 import { ParticleSystem } from '@/engine/ParticleSystem'
 import { useEditorStore } from '@/store/useEditorStore'
+import { createEmitterWireframe, createForceFieldHelper, createCollisionPlaneHelper } from '@/renderer/SceneHelper'
 import type { EmitterConfig } from '@/types/particle'
 
 export default function Viewport() {
@@ -11,6 +13,7 @@ export default function Viewport() {
   const systemRef = useRef<ParticleSystem | null>(null)
   const rafRef = useRef<number>(0)
   const lastTimeRef = useRef<number>(0)
+  const customTextureRef = useRef<THREE.Texture | null>(null)
   const [fps, setFps] = useState(0)
   const [particleCount, setParticleCount] = useState(0)
   const fpsFrames = useRef(0)
@@ -20,6 +23,7 @@ export default function Viewport() {
     scene,
     selectedEmitterId,
     background,
+    helpersVisible,
   } = useEditorStore()
 
   const updateRendererFromEmitter = useCallback((emitter: EmitterConfig | undefined) => {
@@ -27,12 +31,31 @@ export default function Viewport() {
     if (!renderer || !emitter) return
     renderer.setBlendMode(emitter.blendMode)
     renderer.setOrientation(emitter.orientation)
-    renderer.setBuiltInShape(emitter.builtInShape)
+
+    if (emitter.customTextureData) {
+      if (customTextureRef.current) {
+        customTextureRef.current.dispose()
+        customTextureRef.current = null
+      }
+      const loader = new THREE.TextureLoader()
+      const texture = loader.load(emitter.customTextureData)
+      texture.colorSpace = THREE.SRGBColorSpace
+      customTextureRef.current = texture
+      renderer.setCustomTexture(texture)
+    } else {
+      if (customTextureRef.current) {
+        customTextureRef.current.dispose()
+        customTextureRef.current = null
+      }
+      renderer.setCustomTexture(null)
+      renderer.setBuiltInShape(emitter.builtInShape)
+    }
+
     if (emitter.spriteSheet) {
       const frameCount = emitter.spriteSheet.rows * emitter.spriteSheet.cols
-      renderer.setSpriteSheet(emitter.spriteSheet.rows, emitter.spriteSheet.cols, frameCount)
+      renderer.setSpriteSheetEnabled(true, emitter.spriteSheet.rows, emitter.spriteSheet.cols, frameCount)
     } else {
-      renderer.setSpriteSheet(1, 1, 1)
+      renderer.setSpriteSheetEnabled(false, 1, 1, 1)
     }
   }, [])
 
@@ -93,6 +116,10 @@ export default function Viewport() {
 
     return () => {
       cancelAnimationFrame(rafRef.current)
+      if (customTextureRef.current) {
+        customTextureRef.current.dispose()
+        customTextureRef.current = null
+      }
       renderer.dispose()
       rendererRef.current = null
       systemRef.current = null
@@ -106,6 +133,30 @@ export default function Viewport() {
     system.setForceFields(scene.forceFields)
     system.setCollisionPlanes(scene.collisions)
   }, [scene.emitters, scene.forceFields, scene.collisions])
+
+  useEffect(() => {
+    const renderer = rendererRef.current
+    if (!renderer) return
+    renderer.clearHelpers()
+    scene.emitters.forEach((emitter) => {
+      const wireframe = createEmitterWireframe(emitter)
+      renderer.addHelper(wireframe)
+    })
+    scene.forceFields.forEach((field) => {
+      const helper = createForceFieldHelper(field)
+      renderer.addHelper(helper)
+    })
+    scene.collisions.forEach((collision) => {
+      const helper = createCollisionPlaneHelper(collision)
+      renderer.addHelper(helper)
+    })
+  }, [scene.emitters, scene.forceFields, scene.collisions])
+
+  useEffect(() => {
+    const renderer = rendererRef.current
+    if (!renderer) return
+    renderer.setHelpersVisible(helpersVisible)
+  }, [helpersVisible])
 
   useEffect(() => {
     const renderer = rendererRef.current

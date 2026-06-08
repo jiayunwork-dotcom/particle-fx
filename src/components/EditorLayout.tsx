@@ -1,4 +1,4 @@
-import { Eye, Sun, Grid3x3, Sparkles, Download, HelpCircle } from 'lucide-react'
+import { Eye, EyeOff, Sun, Grid3x3, Sparkles, Download } from 'lucide-react'
 import { useEditorStore } from '@/store/useEditorStore'
 import Viewport from '@/components/Viewport'
 import EmitterList from '@/components/EmitterList'
@@ -11,6 +11,8 @@ export default function EditorLayout() {
   const {
     background,
     setBackground,
+    helpersVisible,
+    toggleHelpers,
     togglePresets,
     toggleExport,
   } = useEditorStore()
@@ -65,9 +67,10 @@ export default function EditorLayout() {
           </button>
           <div className="mx-1 h-4 w-px bg-[#3a3a55]" />
           <button
-            className="flex h-7 w-7 items-center justify-center rounded text-[#888] transition-colors hover:bg-[#3a3a55] hover:text-[#e0e0e0]"
+            onClick={toggleHelpers}
+            className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${helpersVisible ? 'bg-[#1a1a2e] text-[#00f0ff]' : 'text-[#888] hover:text-[#e0e0e0]'}`}
           >
-            <HelpCircle size={14} />
+            {helpersVisible ? <Eye size={14} /> : <EyeOff size={14} />}
           </button>
         </div>
       </div>

@@ -8,6 +8,7 @@ interface EditorState {
   isPlaying: boolean
   elapsedTime: number
   background: 'black' | 'white' | 'checker' | 'custom'
+  helpersVisible: boolean
   showPresets: boolean
   showExport: boolean
   leftPanelOpen: boolean
@@ -30,6 +31,7 @@ interface EditorActions {
   setElapsedTime: (time: number) => void
   resetTime: () => void
   setBackground: (bg: 'black' | 'white' | 'checker' | 'custom') => void
+  toggleHelpers: () => void
   togglePresets: () => void
   toggleExport: () => void
   toggleLeftPanel: () => void
@@ -54,6 +56,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   isPlaying: false,
   elapsedTime: 0,
   background: 'black',
+  helpersVisible: true,
   showPresets: false,
   showExport: false,
   leftPanelOpen: true,
@@ -145,6 +148,8 @@ export const useEditorStore = create<EditorStore>()((set) => ({
       background: bg,
       scene: { ...state.scene, background: bg },
     })),
+
+  toggleHelpers: () => set((state) => ({ helpersVisible: !state.helpersVisible })),
 
   togglePresets: () => set((state) => ({ showPresets: !state.showPresets })),
 
