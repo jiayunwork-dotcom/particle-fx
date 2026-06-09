@@ -10,6 +10,8 @@ export type SubEmitterEvent = 'birth' | 'death' | 'lifecycle'
 
 export type FieldType = 'gravity' | 'repulsion' | 'turbulence' | 'directional'
 
+export type TrailColorMode = 'particle' | 'fixed'
+
 export interface CurvePoint {
   time: number
   value: number
@@ -26,6 +28,15 @@ export interface GradientStop {
   time: number
   color: [number, number, number]
   alpha: number
+}
+
+export interface TrailConfig {
+  enabled: boolean
+  length: number
+  width: number
+  colorMode: TrailColorMode
+  fixedColor: [number, number, number]
+  sampleInterval: number
 }
 
 export interface EmitterConfig {
@@ -56,6 +67,7 @@ export interface EmitterConfig {
   subEmitters: { event: SubEmitterEvent; lifecyclePercent?: number; emitter: EmitterConfig }[]
   position: [number, number, number]
   rotation: [number, number, number]
+  trail: TrailConfig
 }
 
 export interface ForceField {
@@ -102,6 +114,17 @@ export function createDefaultGradient(): GradientStop[] {
   ]
 }
 
+export function createDefaultTrailConfig(): TrailConfig {
+  return {
+    enabled: false,
+    length: 20,
+    width: 0.5,
+    colorMode: 'particle',
+    fixedColor: [1, 1, 1],
+    sampleInterval: 1,
+  }
+}
+
 export function createDefaultEmitter(): EmitterConfig {
   return {
     id: crypto.randomUUID(),
@@ -131,5 +154,6 @@ export function createDefaultEmitter(): EmitterConfig {
     subEmitters: [],
     position: [0, 0, 0],
     rotation: [0, 0, 0],
+    trail: createDefaultTrailConfig(),
   }
 }

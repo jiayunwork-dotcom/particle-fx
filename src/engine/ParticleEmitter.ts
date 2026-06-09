@@ -1,5 +1,5 @@
 import type { EmitterConfig, SubEmitterEvent } from '@/types/particle'
-import { ParticlePool } from './ParticlePool'
+import { ParticlePool, MAX_TRAIL_LENGTH, MAX_PARTICLES } from './ParticlePool'
 import { sampleCurve, sampleGradient } from './CurveInterpolator'
 import type { ParticleSystem } from './ParticleSystem'
 
@@ -178,6 +178,59 @@ export class ParticleEmitter {
 
     this.pool.prevAge[idx] = 0
     this.pool.triggeredLifecycleEvents.fill(0, idx * 8, idx * 8 + 8)
+
+    if (this.config.trail?.enabled) {
+      const trailCfg = this.config.trail
+      const maxLen = Math.min(trailCfg.length, MAX_TRAIL_LENGTH)
+      this.recordTrailPoint(idx, maxLen)
+    }
+  }
+
+  private recordTrailPoint(idx: number, maxLen: number): void {
+    const pool = this.pool
+    let count = pool.trailCounts[idx]
+    if (count >= maxLen) {
+      const srcStart = 1
+      const dstStart = 0
+      const moveCount = maxLen - 1
+      for (let k = 0; k < moveCount; k++) {
+        const s = (srcStart + k) * 3
+        const d = (dstStart + k) * 3
+        const base = idx * MAX_TRAIL_LENGTH * 3
+        pool.trailPositions[base + d] = pool.trailPositions[base + s]
+        pool.trailPositions[base + d + 1] = pool.trailPositions[base + s + 1]
+        pool.trailPositions[base + d + 2] = pool.trailPositions[base + s + 2]
+      }
+      for (let k = 0; k < moveCount; k++) {
+        const s = (srcStart + k) * 4
+        const d = (dstStart + k) * 4
+        const base = idx * MAX_TRAIL_LENGTH * 4
+        pool.trailColors[base + d] = pool.trailColors[base + s]
+        pool.trailColors[base + d + 1] = pool.trailColors[base + s + 1]
+        pool.trailColors[base + d + 2] = pool.trailColors[base + s + 2]
+        pool.trailColors[base + d + 3] = pool.trailColors[base + s + 3]
+      }
+      for (let k = 0; k < moveCount; k++) {
+        const s = srcStart + k
+        const d = dstStart + k
+        const base = idx * MAX_TRAIL_LENGTH
+        pool.trailSizes[base + d] = pool.trailSizes[base + s]
+      }
+      count = maxLen - 1
+    }
+    const base3 = idx * MAX_TRAIL_LENGTH * 3 + count * 3
+    pool.trailPositions[base3] = pool.positions[idx * 3]
+    pool.trailPositions[base3 + 1] = pool.positions[idx * 3 + 1]
+    pool.trailPositions[base3 + 2] = pool.positions[idx * 3 + 2]
+    const base4 = idx * MAX_TRAIL_LENGTH * 4 + count * 4
+    pool.trailColors[base4] = pool.colors[idx * 4]
+    pool.trailColors[base4 + 1] = pool.colors[idx * 4 + 1]
+    pool.trailColors[base4 + 2] = pool.colors[idx * 4 + 2]
+    pool.trailColors[base4 + 3] = pool.colors[idx * 4 + 3] * pool.opacities[idx]
+    const base1 = idx * MAX_TRAIL_LENGTH + count
+    pool.trailSizes[base1] = pool.sizes[idx]
+    count++
+    pool.trailCounts[idx] = count
   }
 
   spawnParticle(): void {
@@ -228,6 +281,12 @@ export class ParticleEmitter {
     this.pool.prevAge[idx] = 0
     this.pool.triggeredLifecycleEvents.fill(0, idx * 8, idx * 8 + 8)
 
+    if (this.config.trail?.enabled) {
+      const trailCfg = this.config.trail
+      const maxLen = Math.min(trailCfg.length, MAX_TRAIL_LENGTH)
+      this.recordTrailPoint(idx, maxLen)
+    }
+
     const parentPos: [number, number, number] = [
       this.pool.positions[idx * 3],
       this.pool.positions[idx * 3 + 1],
@@ -247,6 +306,11 @@ export class ParticleEmitter {
     const sizeCurve = this.config.sizeCurve
     const opacityCurve = this.config.opacityCurve
     const myKey = this.ownerKey
+
+    const trailEnabled = this.config.trail?.enabled === true
+    const trailCfg = this.config.trail
+    const maxTrailLen = trailEnabled ? Math.min(trailCfg!.length, MAX_TRAIL_LENGTH) : 0
+    const sampleInterval = trailEnabled ? Math.max(1, trailCfg!.sampleInterval | 0) : 1
 
     const deathSubEmitters: ParticleEmitter[] = []
     this.subEmitterMap.forEach(entry => {
@@ -277,7 +341,11 @@ export class ParticleEmitter {
           pool.positions[i * 3 + 1],
           pool.positions[i * 3 + 2],
         ]
-        pool.release(i)
+        if (trailEnabled && pool.trailCounts[i] > 1) {
+          pool.startTrailDying(i)
+        } else {
+          pool.release(i)
+        }
         for (const sub of deathSubEmitters) {
           sub.emitAtPosition(dyingPos)
         }
@@ -329,6 +397,60 @@ export class ParticleEmitter {
         pool.colors[i * 4 + 1] = grad.color[1]
         pool.colors[i * 4 + 2] = grad.color[2]
         pool.colors[i * 4 + 3] = grad.alpha
+      }
+
+      if (trailEnabled) {
+        pool.trailSampleCounters[i]++
+        if (pool.trailSampleCounters[i] >= sampleInterval) {
+          pool.trailSampleCounters[i] = 0
+          this.recordTrailPoint(i, maxTrailLen)
+        }
+      }
+    }
+
+    if (trailEnabled) {
+      this.updateTrailDying()
+    }
+  }
+
+  private updateTrailDying(): void {
+    const pool = this.pool
+    const myKey = this.ownerKey
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      if (pool.trailEmitterKeys[i] !== myKey) continue
+      if (pool.trailDying[i] !== 1) continue
+      const count = pool.trailCounts[i]
+      if (count <= 1) {
+        pool.release(i)
+        continue
+      }
+      const moveCount = count - 1
+      for (let k = 0; k < moveCount; k++) {
+        const s = (k + 1) * 3
+        const d = k * 3
+        const base = i * MAX_TRAIL_LENGTH * 3
+        pool.trailPositions[base + d] = pool.trailPositions[base + s]
+        pool.trailPositions[base + d + 1] = pool.trailPositions[base + s + 1]
+        pool.trailPositions[base + d + 2] = pool.trailPositions[base + s + 2]
+      }
+      for (let k = 0; k < moveCount; k++) {
+        const s = (k + 1) * 4
+        const d = k * 4
+        const base = i * MAX_TRAIL_LENGTH * 4
+        pool.trailColors[base + d] = pool.trailColors[base + s]
+        pool.trailColors[base + d + 1] = pool.trailColors[base + s + 1]
+        pool.trailColors[base + d + 2] = pool.trailColors[base + s + 2]
+        pool.trailColors[base + d + 3] = pool.trailColors[base + s + 3]
+      }
+      for (let k = 0; k < moveCount; k++) {
+        const s = k + 1
+        const d = k
+        const base = i * MAX_TRAIL_LENGTH
+        pool.trailSizes[base + d] = pool.trailSizes[base + s]
+      }
+      pool.trailCounts[i] = moveCount
+      if (moveCount <= 0) {
+        pool.release(i)
       }
     }
   }

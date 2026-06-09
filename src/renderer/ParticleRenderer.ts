@@ -1,9 +1,10 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import type { BlendMode } from '@/types/particle'
+import type { BlendMode, EmitterConfig } from '@/types/particle'
 import { ParticlePool } from '@/engine/ParticlePool'
 import { MAX_PARTICLES } from '@/engine/ParticlePool'
 import { createSoftCircleTexture, createSquareTexture, createStarTexture, createSmokeTexture } from './BuiltInTextures'
+import { TrailRenderer, type TrailEmitterConfig } from './TrailRenderer'
 
 const vertexShader = `
 attribute vec3 instancePosition;
@@ -148,6 +149,8 @@ export class ParticleRenderer {
   private axesHelper: THREE.AxesHelper | null = null
   private builtInTextures: Map<string, THREE.DataTexture> = new Map()
   private currentTexture: THREE.Texture | null = null
+  private trailRenderer: TrailRenderer
+  private emitterIdToOwnerKey: Map<string, number> = new Map()
 
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene()
@@ -243,6 +246,9 @@ export class ParticleRenderer {
     this.builtInTextures.set('star', createStarTexture())
     this.builtInTextures.set('smoke', createSmokeTexture())
 
+    this.trailRenderer = new TrailRenderer(this.scene)
+    this.trailRenderer.setPixelRatio(window.devicePixelRatio)
+
     this.setBuiltInShape('softCircle')
     this.showHelpers(true)
   }
@@ -288,6 +294,50 @@ export class ParticleRenderer {
     this.instanceFrameIndexAttr.needsUpdate = true
 
     this.geometry.instanceCount = count
+  }
+
+  updateTrailsFromPool(pool: ParticlePool): void {
+    this.trailRenderer.updateFromPool(pool)
+  }
+
+  registerEmitterConfig(emitter: EmitterConfig): void {
+    const ownerKey = this.computeOwnerKey(emitter.id)
+    this.emitterIdToOwnerKey.set(emitter.id, ownerKey)
+    const cfg: TrailEmitterConfig = {
+      id: emitter.id,
+      ownerKey,
+      blendMode: emitter.blendMode,
+      trailWidth: emitter.trail?.width ?? 0.5,
+      trailColorMode: emitter.trail?.colorMode ?? 'particle',
+      trailFixedColor: emitter.trail?.fixedColor ?? [1, 1, 1],
+    }
+    this.trailRenderer.updateEmitterConfig(cfg)
+    this.trailRenderer.setBlendMode(emitter.blendMode)
+  }
+
+  unregisterEmitterConfig(emitterId: string): void {
+    const ownerKey = this.emitterIdToOwnerKey.get(emitterId)
+    if (ownerKey !== undefined) {
+      this.trailRenderer.removeEmitterConfig(ownerKey)
+      this.emitterIdToOwnerKey.delete(emitterId)
+    }
+  }
+
+  clearEmitterConfigs(): void {
+    this.trailRenderer.clearEmitterConfigs()
+    this.emitterIdToOwnerKey.clear()
+  }
+
+  setTrailBlendMode(mode: BlendMode): void {
+    this.trailRenderer.setBlendMode(mode)
+  }
+
+  private computeOwnerKey(id: string): number {
+    let hash = 0
+    for (let i = 0; i < id.length; i++) {
+      hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0
+    }
+    return hash >>> 0
   }
 
   setBlendMode(mode: BlendMode): void {
@@ -466,6 +516,7 @@ export class ParticleRenderer {
     this.renderer.dispose()
     this.controls.dispose()
     this.builtInTextures.forEach(tex => tex.dispose())
+    this.trailRenderer.dispose()
     this.clearHelpers()
     this.scene.remove(this.sceneHelpers)
     if (this.gridHelper) {

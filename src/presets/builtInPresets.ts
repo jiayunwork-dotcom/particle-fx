@@ -275,6 +275,14 @@ function makeMagic(): ParticleScene {
       ],
     },
     orientation: 'billboard' as const,
+    trail: {
+      enabled: true,
+      length: 30,
+      width: 0.4,
+      colorMode: 'particle' as const,
+      fixedColor: [1, 1, 1] as [number, number, number],
+      sampleInterval: 1,
+    },
   }
   return {
     emitters: [emitter],

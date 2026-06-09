@@ -1,4 +1,5 @@
 export const MAX_PARTICLES = 50000
+export const MAX_TRAIL_LENGTH = 100
 
 export class ParticlePool {
   readonly positions: Float32Array
@@ -17,11 +18,21 @@ export class ParticlePool {
   readonly prevAge: Float32Array
   readonly triggeredLifecycleEvents: Uint8Array
 
+  readonly trailPositions: Float32Array
+  readonly trailColors: Float32Array
+  readonly trailSizes: Float32Array
+  readonly trailCounts: Uint16Array
+  readonly trailSampleCounters: Uint8Array
+  readonly trailDying: Uint8Array
+  readonly trailDyingRemaining: Uint16Array
+  readonly trailEmitterKeys: Uint32Array
+
   private freeList: number[]
   private aliveList: number[]
 
   constructor() {
     const N = MAX_PARTICLES
+    const T = MAX_TRAIL_LENGTH
     this.positions = new Float32Array(N * 3)
     this.velocities = new Float32Array(N * 3)
     this.colors = new Float32Array(N * 4)
@@ -38,6 +49,15 @@ export class ParticlePool {
     this.prevAge = new Float32Array(N)
     this.triggeredLifecycleEvents = new Uint8Array(N * 8)
 
+    this.trailPositions = new Float32Array(N * T * 3)
+    this.trailColors = new Float32Array(N * T * 4)
+    this.trailSizes = new Float32Array(N * T)
+    this.trailCounts = new Uint16Array(N)
+    this.trailSampleCounters = new Uint8Array(N)
+    this.trailDying = new Uint8Array(N)
+    this.trailDyingRemaining = new Uint16Array(N)
+    this.trailEmitterKeys = new Uint32Array(N)
+
     this.freeList = []
     for (let i = N - 1; i >= 0; i--) {
       this.freeList.push(i)
@@ -50,13 +70,18 @@ export class ParticlePool {
     const idx = this.freeList.pop()!
     this.alive[idx] = 1
     this.ownerIds[idx] = ownerKey
+    this.trailCounts[idx] = 0
+    this.trailSampleCounters[idx] = 0
+    this.trailDying[idx] = 0
+    this.trailDyingRemaining[idx] = 0
+    this.trailEmitterKeys[idx] = ownerKey
     this.aliveList.push(idx)
     return idx
   }
 
   release(index: number): void {
     if (index < 0 || index >= MAX_PARTICLES) return
-    if (!this.alive[index]) return
+    if (!this.alive[index] && this.trailDying[index] === 0) return
     const listIdx = this.aliveList.indexOf(index)
     if (listIdx !== -1) {
       const last = this.aliveList.length - 1
@@ -66,13 +91,50 @@ export class ParticlePool {
     this.alive[index] = 0
     this.prevAge[index] = 0
     this.triggeredLifecycleEvents.fill(0, index * 8, index * 8 + 8)
+    this.trailCounts[index] = 0
+    this.trailSampleCounters[index] = 0
+    this.trailDying[index] = 0
+    this.trailDyingRemaining[index] = 0
     this.freeList.push(index)
+  }
+
+  startTrailDying(index: number): void {
+    if (index < 0 || index >= MAX_PARTICLES) return
+    this.trailDying[index] = 1
+    this.trailDyingRemaining[index] = this.trailCounts[index]
+    if (this.alive[index]) {
+      const listIdx = this.aliveList.indexOf(index)
+      if (listIdx !== -1) {
+        const last = this.aliveList.length - 1
+        this.aliveList[listIdx] = this.aliveList[last]
+        this.aliveList.pop()
+      }
+      this.alive[index] = 0
+      this.prevAge[index] = 0
+      this.triggeredLifecycleEvents.fill(0, index * 8, index * 8 + 8)
+    }
+  }
+
+  isTrailOnly(index: number): boolean {
+    return index >= 0 && index < MAX_PARTICLES && this.trailDying[index] === 1 && this.alive[index] === 0
+  }
+
+  hasAnyTrail(): boolean {
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      if (this.trailCounts[i] > 1) return true
+    }
+    return false
   }
 
   reset(): void {
     this.alive.fill(0)
     this.prevAge.fill(0)
     this.triggeredLifecycleEvents.fill(0)
+    this.trailCounts.fill(0)
+    this.trailSampleCounters.fill(0)
+    this.trailDying.fill(0)
+    this.trailDyingRemaining.fill(0)
+    this.trailEmitterKeys.fill(0)
     this.freeList = []
     for (let i = MAX_PARTICLES - 1; i >= 0; i--) {
       this.freeList.push(i)

@@ -31,6 +31,7 @@ export default function Viewport() {
     const renderer = rendererRef.current
     if (!renderer || !emitter) return
     renderer.setBlendMode(emitter.blendMode)
+    renderer.setTrailBlendMode(emitter.blendMode)
     renderer.setOrientation(emitter.orientation)
 
     if (emitter.customTextureData) {
@@ -74,7 +75,10 @@ export default function Viewport() {
     systemRef.current = system
 
     const store = useEditorStore.getState()
-    store.scene.emitters.forEach((e: EmitterConfig) => system.addEmitter(e))
+    store.scene.emitters.forEach((e: EmitterConfig) => {
+      system.addEmitter(e)
+      renderer.registerEmitterConfig(e)
+    })
     system.setForceFields(store.scene.forceFields)
     system.setCollisionPlanes(store.scene.collisions)
     renderer.setBackground(store.background)
@@ -99,6 +103,7 @@ export default function Viewport() {
 
       const pool = system.getPool()
       renderer.updateFromPool(pool)
+      renderer.updateTrailsFromPool(pool)
       renderer.render()
 
       fpsFrames.current++
@@ -129,8 +134,14 @@ export default function Viewport() {
 
   useEffect(() => {
     const system = systemRef.current
+    const renderer = rendererRef.current
     if (!system) return
-    scene.emitters.forEach((e) => system.updateEmitter(e))
+    scene.emitters.forEach((e) => {
+      system.updateEmitter(e)
+      if (renderer) {
+        renderer.registerEmitterConfig(e)
+      }
+    })
     system.setForceFields(scene.forceFields)
     system.setCollisionPlanes(scene.collisions)
   }, [scene.emitters, scene.forceFields, scene.collisions])

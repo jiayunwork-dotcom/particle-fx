@@ -10,6 +10,7 @@ import Select from '@/components/ui/Select'
 import Toggle from '@/components/ui/Toggle'
 import CurveEditor from '@/components/CurveEditor'
 import GradientEditor from '@/components/GradientEditor'
+import ColorPicker from '@/components/ui/ColorPicker'
 
 export default function ParamPanel() {
   const {
@@ -96,6 +97,11 @@ export default function ParamPanel() {
     { value: 'birth', label: 'Birth' },
     { value: 'death', label: 'Death' },
     { value: 'lifecycle', label: 'Lifecycle' },
+  ]
+
+  const trailColorModeOptions = [
+    { value: 'particle', label: '跟随粒子颜色' },
+    { value: 'fixed', label: '固定颜色' },
   ]
 
   return (
@@ -491,6 +497,56 @@ export default function ParamPanel() {
             <Plus size={12} />
             <span>添加子发射器</span>
           </button>
+        </FoldSection>
+
+        <FoldSection title="粒子拖尾" defaultOpen={false}>
+          <Toggle
+            label="启用拖尾"
+            value={emitter.trail?.enabled ?? false}
+            onChange={(v) => update({ trail: { ...emitter.trail, enabled: v } })}
+          />
+          {emitter.trail?.enabled && (
+            <>
+              <Slider
+                label="拖尾长度"
+                value={emitter.trail.length}
+                min={5}
+                max={100}
+                step={1}
+                onChange={(v) => update({ trail: { ...emitter.trail, length: Math.round(v) } })}
+              />
+              <Slider
+                label="拖尾宽度"
+                value={emitter.trail.width}
+                min={0.05}
+                max={5}
+                step={0.05}
+                onChange={(v) => update({ trail: { ...emitter.trail, width: v } })}
+              />
+              <Select
+                label="颜色模式"
+                value={emitter.trail.colorMode}
+                options={trailColorModeOptions}
+                onChange={(v) => update({ trail: { ...emitter.trail, colorMode: v as 'particle' | 'fixed' } })}
+              />
+              {emitter.trail.colorMode === 'fixed' && (
+                <ColorPicker
+                  label="固定颜色"
+                  color={emitter.trail.fixedColor}
+                  alpha={1}
+                  onChange={(c) => update({ trail: { ...emitter.trail, fixedColor: c } })}
+                />
+              )}
+              <NumberInput
+                label="采样间隔(帧)"
+                value={emitter.trail.sampleInterval}
+                min={1}
+                max={10}
+                step={1}
+                onChange={(v) => update({ trail: { ...emitter.trail, sampleInterval: Math.max(1, Math.round(v)) } })}
+              />
+            </>
+          )}
         </FoldSection>
       </div>
     </div>
