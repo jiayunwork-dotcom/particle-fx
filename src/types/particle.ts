@@ -12,6 +12,43 @@ export type FieldType = 'gravity' | 'repulsion' | 'turbulence' | 'directional'
 
 export type TrailColorMode = 'particle' | 'fixed'
 
+export type ConstraintType = 'distance' | 'angle' | 'area'
+
+export interface DistanceConstraint {
+  id: string
+  type: 'distance'
+  particleA: number
+  particleB: number
+  restDistance: number
+  stiffness: number
+  broken: boolean
+}
+
+export interface AngleConstraint {
+  id: string
+  type: 'angle'
+  particleA: number
+  particleB: number
+  particleC: number
+  minAngle: number
+  maxAngle: number
+  stiffness: number
+}
+
+export interface AreaConstraint {
+  id: string
+  type: 'area'
+  center: [number, number, number]
+  halfExtents: [number, number, number]
+  bounce: number
+}
+
+export type Constraint = DistanceConstraint | AngleConstraint | AreaConstraint
+
+export interface ConstraintSolverConfig {
+  iterations: number
+}
+
 export interface CurvePoint {
   time: number
   value: number
@@ -93,6 +130,9 @@ export interface ParticleScene {
   emitters: EmitterConfig[]
   forceFields: ForceField[]
   collisions: CollisionPlane[]
+  constraints?: Constraint[]
+  fixedParticles?: number[]
+  constraintSolver?: ConstraintSolverConfig
   background: 'black' | 'white' | 'checker' | 'custom'
   customBgColor?: string
 }

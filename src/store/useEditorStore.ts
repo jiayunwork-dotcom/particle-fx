@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { EmitterConfig, ForceField, CollisionPlane, ParticleScene } from '@/types/particle'
+import type { EmitterConfig, ForceField, CollisionPlane, ParticleScene, Constraint, ConstraintSolverConfig } from '@/types/particle'
 import { createDefaultEmitter } from '@/types/particle'
 
 interface EditorState {
@@ -28,6 +28,14 @@ interface EditorActions {
   addCollision: (collision: CollisionPlane) => void
   removeCollision: (index: number) => void
   updateCollision: (index: number, updates: Partial<CollisionPlane>) => void
+  addConstraint: (constraint: Constraint) => void
+  removeConstraint: (id: string) => void
+  updateConstraint: (id: string, updates: Partial<Constraint>) => void
+  setConstraints: (constraints: Constraint[]) => void
+  addFixedParticle: (index: number) => void
+  removeFixedParticle: (index: number) => void
+  setFixedParticles: (indices: number[]) => void
+  setConstraintSolver: (config: Partial<ConstraintSolverConfig>) => void
   setPlaying: (playing: boolean) => void
   setElapsedTime: (time: number) => void
   resetTime: () => void
@@ -49,6 +57,9 @@ const initialState: ParticleScene = {
   emitters: [defaultEmitter],
   forceFields: [],
   collisions: [],
+  constraints: [],
+  fixedParticles: [],
+  constraintSolver: { iterations: 4 },
   background: 'black',
 }
 
@@ -137,6 +148,60 @@ export const useEditorStore = create<EditorStore>()((set) => ({
       scene: {
         ...state.scene,
         collisions: state.scene.collisions.map((c, i) => (i === index ? { ...c, ...updates } : c)),
+      },
+    })),
+
+  addConstraint: (constraint) =>
+    set((state) => ({
+      scene: { ...state.scene, constraints: [...state.scene.constraints, constraint] },
+    })),
+
+  removeConstraint: (id) =>
+    set((state) => ({
+      scene: { ...state.scene, constraints: state.scene.constraints.filter((c) => c.id !== id) },
+    })),
+
+  updateConstraint: (id, updates) =>
+    set((state) => ({
+      scene: {
+        ...state.scene,
+        constraints: state.scene.constraints.map((c) =>
+          c.id === id ? ({ ...c, ...updates } as Constraint) : c,
+        ),
+      },
+    })),
+
+  setConstraints: (constraints) =>
+    set((state) => ({
+      scene: { ...state.scene, constraints },
+    })),
+
+  addFixedParticle: (index) =>
+    set((state) => {
+      if (state.scene.fixedParticles.includes(index)) return state
+      return {
+        scene: { ...state.scene, fixedParticles: [...state.scene.fixedParticles, index] },
+      }
+    }),
+
+  removeFixedParticle: (index) =>
+    set((state) => ({
+      scene: {
+        ...state.scene,
+        fixedParticles: state.scene.fixedParticles.filter((i) => i !== index),
+      },
+    })),
+
+  setFixedParticles: (indices) =>
+    set((state) => ({
+      scene: { ...state.scene, fixedParticles: indices },
+    })),
+
+  setConstraintSolver: (config) =>
+    set((state) => ({
+      scene: {
+        ...state.scene,
+        constraintSolver: { ...state.scene.constraintSolver, ...config },
       },
     })),
 

@@ -1,4 +1,4 @@
-import type { ParticleScene, GradientStop } from '@/types/particle'
+import type { ParticleScene, GradientStop, DistanceConstraint } from '@/types/particle'
 import { createDefaultEmitter, createDefaultCurve } from '@/types/particle'
 
 function makeFire(): ParticleScene {
@@ -445,6 +445,180 @@ function makeWaterfall(): ParticleScene {
   }
 }
 
+function makeCloth(): ParticleScene {
+  const rows = 10
+  const cols = 10
+  const spacing = 0.5
+  const startX = -((cols - 1) * spacing) / 2
+  const startY = ((rows - 1) * spacing) / 2
+
+  const constraints: DistanceConstraint[] = []
+  const diag = spacing * Math.SQRT2
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c
+      if (c < cols - 1) {
+        constraints.push({
+          id: crypto.randomUUID(),
+          type: 'distance',
+          particleA: i,
+          particleB: i + 1,
+          restDistance: spacing,
+          stiffness: 0.8,
+          broken: false,
+        })
+      }
+      if (r < rows - 1) {
+        constraints.push({
+          id: crypto.randomUUID(),
+          type: 'distance',
+          particleA: i,
+          particleB: i + cols,
+          restDistance: spacing,
+          stiffness: 0.8,
+          broken: false,
+        })
+      }
+      if (c < cols - 1 && r < rows - 1) {
+        constraints.push({
+          id: crypto.randomUUID(),
+          type: 'distance',
+          particleA: i,
+          particleB: i + cols + 1,
+          restDistance: diag,
+          stiffness: 0.5,
+          broken: false,
+        })
+      }
+      if (c > 0 && r < rows - 1) {
+        constraints.push({
+          id: crypto.randomUUID(),
+          type: 'distance',
+          particleA: i,
+          particleB: i + cols - 1,
+          restDistance: diag,
+          stiffness: 0.5,
+          broken: false,
+        })
+      }
+    }
+  }
+
+  const emitter = {
+    ...createDefaultEmitter(),
+    name: 'Cloth',
+    shape: 'rectangle' as const,
+    shapeParams: { width: (cols - 1) * spacing, height: (rows - 1) * spacing },
+    position: [0, 0, 0] as [number, number, number],
+    burstMode: true,
+    burstCount: rows * cols,
+    emissionRate: 0,
+    blendMode: 'alpha' as const,
+    builtInShape: 'softCircle' as const,
+    duration: 1,
+    looping: false,
+    lifetime: [999, 999] as [number, number],
+    initialSpeed: [0, 0] as [number, number],
+    acceleration: [0, -9.8, 0] as [number, number, number],
+    colorGradient: [
+      { time: 0, color: [0.3, 0.6, 1] as [number, number, number], alpha: 0.9 },
+      { time: 1, color: [0.2, 0.5, 0.9] as [number, number, number], alpha: 0.9 },
+    ] satisfies GradientStop[],
+    sizeCurve: {
+      type: 'smooth' as const,
+      points: [
+        { time: 0, value: 0.1 },
+        { time: 1, value: 0.1 },
+      ],
+    },
+    opacityCurve: {
+      type: 'smooth' as const,
+      points: [
+        { time: 0, value: 1 },
+        { time: 1, value: 1 },
+      ],
+    },
+    orientation: 'billboard' as const,
+  }
+
+  return {
+    emitters: [emitter],
+    forceFields: [],
+    collisions: [],
+    constraints,
+    fixedParticles: [0, cols - 1],
+    constraintSolver: { iterations: 6 },
+    background: 'black',
+  }
+}
+
+function makeRope(): ParticleScene {
+  const count = 20
+  const spacing = 0.3
+  const startY = 3
+
+  const constraints: DistanceConstraint[] = []
+  for (let i = 0; i < count - 1; i++) {
+    constraints.push({
+      id: crypto.randomUUID(),
+      type: 'distance',
+      particleA: i,
+      particleB: i + 1,
+      restDistance: spacing,
+      stiffness: 0.95,
+      broken: false,
+    })
+  }
+
+  const emitter = {
+    ...createDefaultEmitter(),
+    name: 'Rope',
+    shape: 'rectangle' as const,
+    shapeParams: { width: 0.01, height: (count - 1) * spacing },
+    position: [0, startY - ((count - 1) * spacing) / 2, 0] as [number, number, number],
+    burstMode: true,
+    burstCount: count,
+    emissionRate: 0,
+    blendMode: 'alpha' as const,
+    builtInShape: 'softCircle' as const,
+    duration: 1,
+    looping: false,
+    lifetime: [999, 999] as [number, number],
+    initialSpeed: [0, 0] as [number, number],
+    acceleration: [0, -9.8, 0] as [number, number, number],
+    colorGradient: [
+      { time: 0, color: [0.9, 0.7, 0.3] as [number, number, number], alpha: 1 },
+      { time: 1, color: [0.8, 0.6, 0.2] as [number, number, number], alpha: 1 },
+    ] satisfies GradientStop[],
+    sizeCurve: {
+      type: 'smooth' as const,
+      points: [
+        { time: 0, value: 0.08 },
+        { time: 1, value: 0.08 },
+      ],
+    },
+    opacityCurve: {
+      type: 'smooth' as const,
+      points: [
+        { time: 0, value: 1 },
+        { time: 1, value: 1 },
+      ],
+    },
+    orientation: 'billboard' as const,
+  }
+
+  return {
+    emitters: [emitter],
+    forceFields: [],
+    collisions: [],
+    constraints,
+    fixedParticles: [0],
+    constraintSolver: { iterations: 8 },
+    background: 'black',
+  }
+}
+
 export const builtInPresets: { name: string; description: string; scene: ParticleScene }[] = [
   {
     name: '火焰',
@@ -485,5 +659,15 @@ export const builtInPresets: { name: string; description: string; scene: Particl
     name: '瀑布水流',
     description: '垂直下落的水流效果，带有碰撞平面和溅射子发射器',
     scene: makeWaterfall(),
+  },
+  {
+    name: '布料模拟',
+    description: '10×10粒子网格距离约束布料，重力下悬挂，顶部两角固定',
+    scene: makeCloth(),
+  },
+  {
+    name: '弹性绳索',
+    description: '20个粒子串联距离约束绳索，重力下垂，顶端固定',
+    scene: makeRope(),
   },
 ]

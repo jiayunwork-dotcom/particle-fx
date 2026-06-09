@@ -235,16 +235,39 @@ export class ParticleEmitter {
   }
 
   spawnParticle(): void {
+    this.spawnParticleInternal(null, null, null)
+  }
+
+  spawnParticleWithData(
+    position?: [number, number, number],
+    velocity?: [number, number, number],
+    lifetime?: number
+  ): number {
+    return this.spawnParticleInternal(position, velocity, lifetime)
+  }
+
+  private spawnParticleInternal(
+    position: [number, number, number] | null,
+    velocity: [number, number, number] | null,
+    customLifetime: number | null
+  ): number {
     const idx = this.pool.acquire(this.ownerKey)
-    if (idx === -1) return
+    if (idx === -1) return -1
 
-    const pos = this.getShapePosition()
-    this.pool.positions[idx * 3] = pos[0] + this.config.position[0]
-    this.pool.positions[idx * 3 + 1] = pos[1] + this.config.position[1]
-    this.pool.positions[idx * 3 + 2] = pos[2] + this.config.position[2]
+    const pos = position ?? this.getShapePosition()
+    const baseX = position ? 0 : this.config.position[0]
+    const baseY = position ? 0 : this.config.position[1]
+    const baseZ = position ? 0 : this.config.position[2]
+    this.pool.positions[idx * 3] = pos[0] + baseX
+    this.pool.positions[idx * 3 + 1] = pos[1] + baseY
+    this.pool.positions[idx * 3 + 2] = pos[2] + baseZ
 
-    const speed = randRange(this.config.initialSpeed[0], this.config.initialSpeed[1])
-    const dir = this.getDirection(pos)
+    const speed = velocity
+      ? Math.sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2])
+      : randRange(this.config.initialSpeed[0], this.config.initialSpeed[1])
+    const dir = velocity
+      ? (speed > 1e-8 ? [velocity[0] / speed, velocity[1] / speed, velocity[2] / speed] : [0, 0, 0])
+      : this.getDirection(position ?? pos)
     this.pool.velocities[idx * 3] = dir[0] * speed
     this.pool.velocities[idx * 3 + 1] = dir[1] * speed
     this.pool.velocities[idx * 3 + 2] = dir[2] * speed
@@ -255,7 +278,7 @@ export class ParticleEmitter {
     this.pool.accelerations[idx * 3 + 1] = this.config.acceleration[1]
     this.pool.accelerations[idx * 3 + 2] = this.config.acceleration[2]
 
-    const lifetime = randRange(this.config.lifetime[0], this.config.lifetime[1])
+    const lifetime = customLifetime ?? randRange(this.config.lifetime[0], this.config.lifetime[1])
     this.pool.ages[idx] = 0
     this.pool.lifetimes[idx] = lifetime
 
@@ -298,9 +321,15 @@ export class ParticleEmitter {
         entry.emitter.emitAtPosition(parentPos)
       }
     })
+
+    return idx
   }
 
   update(dt: number): void {
+    this.updateLifecycle(dt)
+  }
+
+  updateLifecycle(dt: number): void {
     const pool = this.pool
     const alive = pool.getAliveList()
     const colorGradient = this.config.colorGradient
@@ -381,14 +410,6 @@ export class ParticleEmitter {
         }
       }
 
-      pool.velocities[i * 3] += pool.accelerations[i * 3] * dt
-      pool.velocities[i * 3 + 1] += pool.accelerations[i * 3 + 1] * dt
-      pool.velocities[i * 3 + 2] += pool.accelerations[i * 3 + 2] * dt
-
-      pool.positions[i * 3] += pool.velocities[i * 3] * dt
-      pool.positions[i * 3 + 1] += pool.velocities[i * 3 + 1] * dt
-      pool.positions[i * 3 + 2] += pool.velocities[i * 3 + 2] * dt
-
       pool.sizes[i] = sampleCurve(sizeCurve, t)
       pool.opacities[i] = sampleCurve(opacityCurve, t)
 
@@ -411,6 +432,26 @@ export class ParticleEmitter {
 
     if (trailEnabled) {
       this.updateTrailDying()
+    }
+  }
+
+  updatePhysics(dt: number): void {
+    const pool = this.pool
+    const alive = pool.getAliveList()
+    const myKey = this.ownerKey
+
+    for (let j = 0; j < alive.length; j++) {
+      const i = alive[j]
+      if (pool.ownerIds[i] !== myKey) continue
+      if (pool.isParticleFixed(i)) continue
+
+      pool.velocities[i * 3] += pool.accelerations[i * 3] * dt
+      pool.velocities[i * 3 + 1] += pool.accelerations[i * 3 + 1] * dt
+      pool.velocities[i * 3 + 2] += pool.accelerations[i * 3 + 2] * dt
+
+      pool.positions[i * 3] += pool.velocities[i * 3] * dt
+      pool.positions[i * 3 + 1] += pool.velocities[i * 3 + 1] * dt
+      pool.positions[i * 3 + 2] += pool.velocities[i * 3 + 2] * dt
     }
   }
 

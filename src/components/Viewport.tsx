@@ -4,7 +4,7 @@ import { Eye, Sun, Grid3x3 } from 'lucide-react'
 import { ParticleRenderer } from '@/renderer/ParticleRenderer'
 import { ParticleSystem } from '@/engine/ParticleSystem'
 import { useEditorStore } from '@/store/useEditorStore'
-import { createEmitterWireframe, createForceFieldHelper, createCollisionPlaneHelper } from '@/renderer/SceneHelper'
+import { createEmitterWireframe, createForceFieldHelper, createCollisionPlaneHelper, ConstraintVisualizer } from '@/renderer/SceneHelper'
 import type { EmitterConfig } from '@/types/particle'
 
 export default function Viewport() {
@@ -14,6 +14,7 @@ export default function Viewport() {
   const rafRef = useRef<number>(0)
   const lastTimeRef = useRef<number>(0)
   const customTextureRef = useRef<THREE.Texture | null>(null)
+  const constraintVisRef = useRef<ConstraintVisualizer | null>(null)
   const [fps, setFps] = useState(0)
   const [particleCount, setParticleCount] = useState(0)
   const fpsFrames = useRef(0)
@@ -25,6 +26,7 @@ export default function Viewport() {
     background,
     helpersVisible,
     resetTrigger,
+    setConstraints,
   } = useEditorStore()
 
   const updateRendererFromEmitter = useCallback((emitter: EmitterConfig | undefined) => {
@@ -74,6 +76,10 @@ export default function Viewport() {
     rendererRef.current = renderer
     systemRef.current = system
 
+    const constraintVis = new ConstraintVisualizer()
+    constraintVisRef.current = constraintVis
+    renderer.addHelper(constraintVis.group)
+
     const store = useEditorStore.getState()
     store.scene.emitters.forEach((e: EmitterConfig) => {
       system.addEmitter(e)
@@ -81,6 +87,9 @@ export default function Viewport() {
     })
     system.setForceFields(store.scene.forceFields)
     system.setCollisionPlanes(store.scene.collisions)
+    system.setConstraints(store.scene.constraints)
+    system.setFixedParticles(store.scene.fixedParticles)
+    system.setConstraintSolver(store.scene.constraintSolver)
     renderer.setBackground(store.background)
 
     const selectedEmitter = store.scene.emitters.find((e: EmitterConfig) => e.id === store.selectedEmitterId)
@@ -99,11 +108,24 @@ export default function Viewport() {
       if (currentStore.isPlaying) {
         system.update(dt)
         currentStore.setElapsedTime(currentStore.elapsedTime + dt)
+
+        if (system.didConstraintsChange()) {
+          const cur = system.getConstraints()
+          const sceneC = currentStore.scene.constraints
+          if (cur.length !== sceneC.length) {
+            currentStore.setConstraints([...cur])
+          }
+        }
       }
 
       const pool = system.getPool()
       renderer.updateFromPool(pool)
       renderer.updateTrailsFromPool(pool)
+
+      if (constraintVisRef.current && useEditorStore.getState().helpersVisible) {
+        constraintVisRef.current.update(useEditorStore.getState().scene.constraints, pool)
+      }
+
       renderer.render()
 
       fpsFrames.current++
@@ -126,6 +148,10 @@ export default function Viewport() {
         customTextureRef.current.dispose()
         customTextureRef.current = null
       }
+      if (constraintVisRef.current) {
+        constraintVisRef.current.clear()
+        constraintVisRef.current = null
+      }
       renderer.dispose()
       rendererRef.current = null
       systemRef.current = null
@@ -144,7 +170,10 @@ export default function Viewport() {
     })
     system.setForceFields(scene.forceFields)
     system.setCollisionPlanes(scene.collisions)
-  }, [scene.emitters, scene.forceFields, scene.collisions])
+    system.setConstraints(scene.constraints)
+    system.setFixedParticles(scene.fixedParticles)
+    system.setConstraintSolver(scene.constraintSolver)
+  }, [scene.emitters, scene.forceFields, scene.collisions, scene.constraints, scene.fixedParticles, scene.constraintSolver])
 
   useEffect(() => {
     const renderer = rendererRef.current
@@ -162,6 +191,9 @@ export default function Viewport() {
       const helper = createCollisionPlaneHelper(collision)
       renderer.addHelper(helper)
     })
+    if (constraintVisRef.current) {
+      renderer.addHelper(constraintVisRef.current.group)
+    }
   }, [scene.emitters, scene.forceFields, scene.collisions])
 
   useEffect(() => {
@@ -180,6 +212,9 @@ export default function Viewport() {
     const renderer = rendererRef.current
     if (!renderer) return
     renderer.setHelpersVisible(helpersVisible)
+    if (!helpersVisible && constraintVisRef.current) {
+      constraintVisRef.current.clear()
+    }
   }, [helpersVisible])
 
   useEffect(() => {

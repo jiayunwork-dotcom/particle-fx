@@ -3,6 +3,7 @@ export const MAX_TRAIL_LENGTH = 100
 
 export class ParticlePool {
   readonly positions: Float32Array
+  readonly prevPositions: Float32Array
   readonly velocities: Float32Array
   readonly colors: Float32Array
   readonly accelerations: Float32Array
@@ -14,6 +15,7 @@ export class ParticlePool {
   readonly initialSpeeds: Float32Array
   readonly frameIndices: Float32Array
   readonly alive: Uint8Array
+  readonly isFixed: Uint8Array
   readonly ownerIds: Uint32Array
   readonly prevAge: Float32Array
   readonly triggeredLifecycleEvents: Uint8Array
@@ -35,6 +37,7 @@ export class ParticlePool {
     const N = MAX_PARTICLES
     const T = MAX_TRAIL_LENGTH
     this.positions = new Float32Array(N * 3)
+    this.prevPositions = new Float32Array(N * 3)
     this.velocities = new Float32Array(N * 3)
     this.colors = new Float32Array(N * 4)
     this.accelerations = new Float32Array(N * 3)
@@ -46,6 +49,7 @@ export class ParticlePool {
     this.initialSpeeds = new Float32Array(N)
     this.frameIndices = new Float32Array(N)
     this.alive = new Uint8Array(N)
+    this.isFixed = new Uint8Array(N)
     this.ownerIds = new Uint32Array(N)
     this.prevAge = new Float32Array(N)
     this.triggeredLifecycleEvents = new Uint8Array(N * 8)
@@ -71,7 +75,11 @@ export class ParticlePool {
     if (this.freeList.length === 0) return -1
     const idx = this.freeList.pop()!
     this.alive[idx] = 1
+    this.isFixed[idx] = 0
     this.ownerIds[idx] = ownerKey
+    this.prevPositions[idx * 3] = 0
+    this.prevPositions[idx * 3 + 1] = 0
+    this.prevPositions[idx * 3 + 2] = 0
     this.trailCounts[idx] = 0
     this.trailSampleCounters[idx] = 0
     this.trailDying[idx] = 0
@@ -108,6 +116,7 @@ export class ParticlePool {
       this.aliveList.pop()
     }
     this.alive[index] = 0
+    this.isFixed[index] = 0
     this.prevAge[index] = 0
     this.triggeredLifecycleEvents.fill(0, index * 8, index * 8 + 8)
     this.removeTrailAlive(index)
@@ -115,6 +124,9 @@ export class ParticlePool {
     this.trailSampleCounters[index] = 0
     this.trailDying[index] = 0
     this.trailDyingRemaining[index] = 0
+    this.prevPositions[index * 3] = 0
+    this.prevPositions[index * 3 + 1] = 0
+    this.prevPositions[index * 3 + 2] = 0
     this.freeList.push(index)
   }
 
@@ -145,6 +157,7 @@ export class ParticlePool {
 
   reset(): void {
     this.alive.fill(0)
+    this.isFixed.fill(0)
     this.prevAge.fill(0)
     this.triggeredLifecycleEvents.fill(0)
     this.trailCounts.fill(0)
@@ -152,12 +165,24 @@ export class ParticlePool {
     this.trailDying.fill(0)
     this.trailDyingRemaining.fill(0)
     this.trailEmitterKeys.fill(0)
+    this.positions.fill(0)
+    this.prevPositions.fill(0)
+    this.velocities.fill(0)
     this.freeList = []
     for (let i = MAX_PARTICLES - 1; i >= 0; i--) {
       this.freeList.push(i)
     }
     this.aliveList = []
     this.trailAliveList = []
+  }
+
+  setFixed(index: number, fixed: boolean): void {
+    if (index < 0 || index >= MAX_PARTICLES) return
+    this.isFixed[index] = fixed ? 1 : 0
+  }
+
+  isParticleFixed(index: number): boolean {
+    return index >= 0 && index < MAX_PARTICLES && this.isFixed[index] === 1
   }
 
   getTrailAliveList(): readonly number[] {
