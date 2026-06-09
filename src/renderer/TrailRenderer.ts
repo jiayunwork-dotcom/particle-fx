@@ -169,7 +169,7 @@ export class TrailRenderer {
   }
 
   setPixelRatio(ratio: number): void {
-    this.material.uniforms.uPixelRatio.value = ratio
+    this.material.uniforms.uWidthScale.value = ratio
   }
 
   updateEmitterConfig(config: TrailEmitterConfig): void {
@@ -200,7 +200,9 @@ export class TrailRenderer {
 
     let anyTrail = false
 
-    for (let pi = 0; pi < MAX_PARTICLES; pi++) {
+    const trailList = pool.getTrailAliveList()
+    for (let j = 0; j < trailList.length; j++) {
+      const pi = trailList[j]
       const count = pool.trailCounts[pi]
       if (count < 2) continue
 

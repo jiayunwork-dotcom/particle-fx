@@ -29,6 +29,7 @@ export class ParticlePool {
 
   private freeList: number[]
   private aliveList: number[]
+  private trailAliveList: number[]
 
   constructor() {
     const N = MAX_PARTICLES
@@ -63,6 +64,7 @@ export class ParticlePool {
       this.freeList.push(i)
     }
     this.aliveList = []
+    this.trailAliveList = []
   }
 
   acquire(ownerKey: number): number {
@@ -79,6 +81,23 @@ export class ParticlePool {
     return idx
   }
 
+  addTrailAlive(index: number): void {
+    if (index < 0 || index >= MAX_PARTICLES) return
+    if (this.trailCounts[index] === 1) {
+      this.trailAliveList.push(index)
+    }
+  }
+
+  removeTrailAlive(index: number): void {
+    if (index < 0 || index >= MAX_PARTICLES) return
+    const listIdx = this.trailAliveList.indexOf(index)
+    if (listIdx !== -1) {
+      const last = this.trailAliveList.length - 1
+      this.trailAliveList[listIdx] = this.trailAliveList[last]
+      this.trailAliveList.pop()
+    }
+  }
+
   release(index: number): void {
     if (index < 0 || index >= MAX_PARTICLES) return
     if (!this.alive[index] && this.trailDying[index] === 0) return
@@ -91,6 +110,7 @@ export class ParticlePool {
     this.alive[index] = 0
     this.prevAge[index] = 0
     this.triggeredLifecycleEvents.fill(0, index * 8, index * 8 + 8)
+    this.removeTrailAlive(index)
     this.trailCounts[index] = 0
     this.trailSampleCounters[index] = 0
     this.trailDying[index] = 0
@@ -120,10 +140,7 @@ export class ParticlePool {
   }
 
   hasAnyTrail(): boolean {
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      if (this.trailCounts[i] > 1) return true
-    }
-    return false
+    return this.trailAliveList.length > 0
   }
 
   reset(): void {
@@ -140,6 +157,11 @@ export class ParticlePool {
       this.freeList.push(i)
     }
     this.aliveList = []
+    this.trailAliveList = []
+  }
+
+  getTrailAliveList(): readonly number[] {
+    return this.trailAliveList
   }
 
   getCount(): number {

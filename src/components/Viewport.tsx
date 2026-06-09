@@ -166,8 +166,14 @@ export default function Viewport() {
 
   useEffect(() => {
     const system = systemRef.current
+    const renderer = rendererRef.current
     if (!system) return
     system.reset()
+    if (renderer) {
+      const pool = system.getPool()
+      renderer.updateFromPool(pool)
+      renderer.updateTrailsFromPool(pool)
+    }
   }, [resetTrigger])
 
   useEffect(() => {

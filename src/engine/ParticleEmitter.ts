@@ -231,6 +231,7 @@ export class ParticleEmitter {
     pool.trailSizes[base1] = pool.sizes[idx]
     count++
     pool.trailCounts[idx] = count
+    pool.addTrailAlive(idx)
   }
 
   spawnParticle(): void {
@@ -416,7 +417,9 @@ export class ParticleEmitter {
   private updateTrailDying(): void {
     const pool = this.pool
     const myKey = this.ownerKey
-    for (let i = 0; i < MAX_PARTICLES; i++) {
+    const trailList = pool.getTrailAliveList()
+    for (let j = 0; j < trailList.length; j++) {
+      const i = trailList[j]
       if (pool.trailEmitterKeys[i] !== myKey) continue
       if (pool.trailDying[i] !== 1) continue
       const count = pool.trailCounts[i]
@@ -449,6 +452,9 @@ export class ParticleEmitter {
         pool.trailSizes[base + d] = pool.trailSizes[base + s]
       }
       pool.trailCounts[i] = moveCount
+      if (moveCount <= 1) {
+        pool.removeTrailAlive(i)
+      }
       if (moveCount <= 0) {
         pool.release(i)
       }

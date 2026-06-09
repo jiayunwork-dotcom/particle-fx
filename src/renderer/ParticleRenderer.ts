@@ -254,37 +254,35 @@ export class ParticleRenderer {
   }
 
   updateFromPool(pool: ParticlePool): void {
-    const alive = pool.alive
+    const aliveList = pool.getAliveList()
     const positions = pool.positions
     const sizes = pool.sizes
     const opacities = pool.opacities
     const rotations = pool.rotations
     const colors = pool.colors
     const frameIndices = pool.frameIndices
-    const N = alive.length
+    const N = aliveList.length
 
-    let count = 0
     const posArr = this.instancePosition.array as Float32Array
     const sizeArr = this.instanceSizeAttr.array as Float32Array
     const rotArr = this.instanceRotationAttr.array as Float32Array
     const colorArr = this.instanceColorAttr.array as Float32Array
     const frameArr = this.instanceFrameIndexAttr.array as Float32Array
 
-    for (let i = 0; i < N; i++) {
-      if (!alive[i]) continue
-      const i3 = count * 3
-      const i4 = count * 4
+    for (let j = 0; j < N; j++) {
+      const i = aliveList[j]
+      const i3 = j * 3
+      const i4 = j * 4
       posArr[i3] = positions[i * 3]
       posArr[i3 + 1] = positions[i * 3 + 1]
       posArr[i3 + 2] = positions[i * 3 + 2]
-      sizeArr[count] = sizes[i]
-      rotArr[count] = rotations[i]
+      sizeArr[j] = sizes[i]
+      rotArr[j] = rotations[i]
       colorArr[i4] = colors[i * 4]
       colorArr[i4 + 1] = colors[i * 4 + 1]
       colorArr[i4 + 2] = colors[i * 4 + 2]
       colorArr[i4 + 3] = colors[i * 4 + 3] * opacities[i]
-      frameArr[count] = frameIndices[i]
-      count++
+      frameArr[j] = frameIndices[i]
     }
 
     this.instancePosition.needsUpdate = true
@@ -293,7 +291,7 @@ export class ParticleRenderer {
     this.instanceColorAttr.needsUpdate = true
     this.instanceFrameIndexAttr.needsUpdate = true
 
-    this.geometry.instanceCount = count
+    this.geometry.instanceCount = N
   }
 
   updateTrailsFromPool(pool: ParticlePool): void {
