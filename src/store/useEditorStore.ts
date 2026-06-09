@@ -271,19 +271,29 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   setRecordingFrameInterval: (k) => set({ recordingFrameInterval: k }),
 
   addRecordingClip: (clip) =>
-    set((state) => ({
-      recordingClips: [...state.recordingClips, clip],
-      selectedClipId: state.selectedClipId ?? clip.id,
-    })),
+    set((state) => {
+      const isFirstClip = state.recordingClips.length === 0
+      return {
+        recordingClips: [...state.recordingClips, clip],
+        selectedClipId: state.selectedClipId ?? clip.id,
+        isPlaybackMode: isFirstClip || state.selectedClipId === null ? true : state.isPlaybackMode,
+        currentPlaybackFrame: isFirstClip || state.selectedClipId === null ? 0 : state.currentPlaybackFrame,
+        isPlaybackPlaying: false,
+      }
+    }),
 
   removeRecordingClip: (id) =>
     set((state) => {
       const newClips = state.recordingClips.filter((c) => c.id !== id)
+      const nextSelected = state.selectedClipId === id
+        ? (newClips.length > 0 ? newClips[0].id : null)
+        : state.selectedClipId
       return {
         recordingClips: newClips,
-        selectedClipId: state.selectedClipId === id ? (newClips.length > 0 ? newClips[0].id : null) : state.selectedClipId,
-        isPlaybackMode: state.selectedClipId === id ? false : state.isPlaybackMode,
+        selectedClipId: nextSelected,
+        isPlaybackMode: nextSelected !== null ? state.isPlaybackMode : false,
         isPlaybackPlaying: state.selectedClipId === id ? false : state.isPlaybackPlaying,
+        currentPlaybackFrame: state.selectedClipId === id ? 0 : state.currentPlaybackFrame,
       }
     }),
 

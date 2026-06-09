@@ -198,20 +198,28 @@ function stressColor(stress: number): THREE.Color {
 
 export class ConstraintVisualizer {
   group: THREE.Group
-  private distanceLines: Map<string, THREE.Line> = new Map()
+  private mergedDistance: THREE.LineSegments | null = null
+  private mergedPositions: Float32Array = new Float32Array(0)
+  private mergedColors: Float32Array = new Float32Array(0)
+  private mergedCapacity = 0
   private angleArcs: Map<string, THREE.Line> = new Map()
   private areaHelpers: Map<string, THREE.LineSegments> = new Map()
+  private readonly CHUNK_SIZE = 1024
 
   constructor() {
     this.group = new THREE.Group()
   }
 
   clear(): void {
-    this.distanceLines.forEach(line => {
-      line.geometry.dispose()
-      ;(line.material as THREE.Material).dispose()
-    })
-    this.distanceLines.clear()
+    if (this.mergedDistance) {
+      this.mergedDistance.geometry.dispose()
+      ;(this.mergedDistance.material as THREE.Material).dispose()
+      this.group.remove(this.mergedDistance)
+      this.mergedDistance = null
+    }
+    this.mergedCapacity = 0
+    this.mergedPositions = new Float32Array(0)
+    this.mergedColors = new Float32Array(0)
     this.angleArcs.forEach(arc => {
       arc.geometry.dispose()
       ;(arc.material as THREE.Material).dispose()
@@ -227,45 +235,102 @@ export class ConstraintVisualizer {
     }
   }
 
+  private ensureCapacity(segmentsNeeded: number): void {
+    const needed = segmentsNeeded * 2 * 3
+    if (needed <= this.mergedCapacity) return
+    const chunks = Math.ceil(segmentsNeeded / this.CHUNK_SIZE)
+    const newCap = chunks * this.CHUNK_SIZE * 2 * 3
+    const newPos = new Float32Array(newCap)
+    const newCol = new Float32Array(newCap)
+    if (this.mergedPositions.length > 0) {
+      newPos.set(this.mergedPositions)
+      newCol.set(this.mergedColors)
+    }
+    this.mergedPositions = newPos
+    this.mergedColors = newCol
+    this.mergedCapacity = newCap
+    if (this.mergedDistance) {
+      this.mergedDistance.geometry.dispose()
+      this.group.remove(this.mergedDistance)
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(this.mergedPositions, 3))
+    geo.setAttribute('color', new THREE.BufferAttribute(this.mergedColors, 3))
+    const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 })
+    this.mergedDistance = new THREE.LineSegments(geo, mat)
+    this.group.add(this.mergedDistance)
+  }
+
   update(constraints: Constraint[], pool: ParticlePool): void {
     const validIds = new Set<string>()
+    const validAngleIds = new Set<string>()
+    const validAreaIds = new Set<string>()
+
+    let distanceCount = 0
+    for (let i = 0; i < constraints.length; i++) {
+      if (constraints[i].type === 'distance' && !((constraints[i] as DistanceConstraint).broken)) {
+        distanceCount++
+      }
+    }
+
+    this.ensureCapacity(distanceCount)
+    let distanceWrite = 0
 
     for (let i = 0; i < constraints.length; i++) {
       const c = constraints[i]
       validIds.add(c.id)
       if (c.type === 'distance') {
-        this.updateDistanceLine(c, pool)
+        const written = this.writeDistanceSegment(c as DistanceConstraint, pool, distanceWrite)
+        if (written >= 0) {
+          distanceWrite++
+        }
       } else if (c.type === 'angle') {
-        this.updateAngleArc(c, pool)
+        validAngleIds.add(c.id)
+        this.updateAngleArc(c as AngleConstraint, pool)
       } else if (c.type === 'area') {
-        this.updateAreaBox(c)
+        validAreaIds.add(c.id)
+        this.updateAreaBox(c as AreaConstraint)
       }
     }
 
-    const cleanup = <T extends THREE.Object3D>(map: Map<string, T>) => {
-      map.forEach((obj, id) => {
-        if (!validIds.has(id)) {
-          if ((obj as any).geometry) (obj as any).geometry.dispose()
-          if ((obj as any).material) {
-            const mat = (obj as any).material
-            if (Array.isArray(mat)) mat.forEach((m: THREE.Material) => m.dispose())
-            else mat.dispose()
-          }
-          this.group.remove(obj)
-          map.delete(id)
-        }
-      })
+    if (this.mergedDistance && this.mergedDistance.geometry) {
+      const geo = this.mergedDistance.geometry as THREE.BufferGeometry
+      geo.setDrawRange(0, distanceWrite * 2)
+      if (geo.attributes.position) {
+        geo.attributes.position.needsUpdate = true
+      }
+      if (geo.attributes.color) {
+        geo.attributes.color.needsUpdate = true
+      }
     }
-    cleanup(this.distanceLines)
-    cleanup(this.angleArcs)
-    cleanup(this.areaHelpers)
+
+    this.angleArcs.forEach((obj, id) => {
+      if (!validAngleIds.has(id)) {
+        obj.geometry.dispose()
+        const mat = obj.material as THREE.Material | THREE.Material[]
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+        else mat.dispose()
+        this.group.remove(obj)
+        this.angleArcs.delete(id)
+      }
+    })
+    this.areaHelpers.forEach((obj, id) => {
+      if (!validAreaIds.has(id)) {
+        obj.geometry.dispose()
+        const mat = obj.material as THREE.Material | THREE.Material[]
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+        else mat.dispose()
+        this.group.remove(obj)
+        this.areaHelpers.delete(id)
+      }
+    })
   }
 
-  private updateDistanceLine(c: DistanceConstraint, pool: ParticlePool): void {
-    if (c.broken) return
-    if (c.particleA < 0 || c.particleA >= MAX_PARTICLES) return
-    if (c.particleB < 0 || c.particleB >= MAX_PARTICLES) return
-    if (!pool.isAlive(c.particleA) || !pool.isAlive(c.particleB)) return
+  private writeDistanceSegment(c: DistanceConstraint, pool: ParticlePool, slot: number): number {
+    if (c.broken) return -1
+    if (c.particleA < 0 || c.particleA >= MAX_PARTICLES) return -1
+    if (c.particleB < 0 || c.particleB >= MAX_PARTICLES) return -1
+    if (!pool.isAlive(c.particleA) || !pool.isAlive(c.particleB)) return -1
 
     const ax = pool.positions[c.particleA * 3]
     const ay = pool.positions[c.particleA * 3 + 1]
@@ -277,25 +342,28 @@ export class ConstraintVisualizer {
     const dx = bx - ax
     const dy = by - ay
     const dz = bz - az
-    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+    const distSq = dx * dx + dy * dy + dz * dz
+    const dist = Math.sqrt(distSq)
     const stress = c.restDistance > 0 ? Math.abs(dist - c.restDistance) / (c.restDistance * 2) : 0
 
-    let line = this.distanceLines.get(c.id)
-    if (!line) {
-      const positions = new Float32Array(6)
-      const geo = new THREE.BufferGeometry()
-      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-      const mat = new THREE.LineBasicMaterial({ color: 0x00ff44, transparent: true, opacity: 0.9 })
-      line = new THREE.Line(geo, mat)
-      this.distanceLines.set(c.id, line)
-      this.group.add(line)
-    }
+    const col = stressColor(stress)
+    const pi = slot * 2 * 3
 
-    const pos = (line.geometry.attributes.position.array as Float32Array)
-    pos[0] = ax; pos[1] = ay; pos[2] = az
-    pos[3] = bx; pos[4] = by; pos[5] = bz
-    line.geometry.attributes.position.needsUpdate = true
-    ;(line.material as THREE.LineBasicMaterial).color.copy(stressColor(stress))
+    this.mergedPositions[pi] = ax
+    this.mergedPositions[pi + 1] = ay
+    this.mergedPositions[pi + 2] = az
+    this.mergedPositions[pi + 3] = bx
+    this.mergedPositions[pi + 4] = by
+    this.mergedPositions[pi + 5] = bz
+
+    this.mergedColors[pi] = col.r
+    this.mergedColors[pi + 1] = col.g
+    this.mergedColors[pi + 2] = col.b
+    this.mergedColors[pi + 3] = col.r
+    this.mergedColors[pi + 4] = col.g
+    this.mergedColors[pi + 5] = col.b
+
+    return slot
   }
 
   private updateAngleArc(c: AngleConstraint, pool: ParticlePool): void {
@@ -324,10 +392,6 @@ export class ConstraintVisualizer {
     const currentAngle = Math.acos(dot)
     const segments = 24
 
-    const points: THREE.Vector3[] = []
-    const startAngle = Math.min(c.minAngle, currentAngle)
-    const endAngle = Math.max(c.maxAngle, currentAngle)
-
     const crossX = ay * cz - az * cy
     const crossY = az * cx - ax * cz
     const crossZ = ax * cy - ay * cx
@@ -337,39 +401,59 @@ export class ConstraintVisualizer {
     }
     const axis = new THREE.Vector3(crossX / axisLen, crossY / axisLen, crossZ / axisLen)
     const ba = new THREE.Vector3(ax / la, ay / la, az / la)
-
-    const arcPoints = (angle1: number, angle2: number, color: THREE.Color) => {
-      for (let s = 0; s <= segments; s++) {
-        const t = angle1 + (angle2 - angle1) * s / segments
-        const v = ba.clone().applyAxisAngle(axis, t)
-        points.push(new THREE.Vector3(bx + v.x * ar, by + v.y * ar, bz + v.z * ar))
-      }
-    }
-
-    if (c.minAngle > 0) {
-      arcPoints(0, c.minAngle, new THREE.Color(0x666666))
-    }
-    arcPoints(Math.max(0, c.minAngle), Math.min(endAngle, c.maxAngle), new THREE.Color(0x00ffff))
-    if (c.maxAngle < Math.PI * 2) {
-      arcPoints(c.maxAngle, Math.max(c.maxAngle, endAngle + 0.01), new THREE.Color(0x666666))
-    }
+    const endAngle = Math.max(c.maxAngle, currentAngle)
 
     let arc = this.angleArcs.get(c.id)
+    let geo: THREE.BufferGeometry
+    let positionArr: Float32Array
+    const totalPoints = (segments + 1) * 3
+    const expectedLength = totalPoints * 3
+
     if (!arc) {
-      const geo = new THREE.BufferGeometry()
-      const mat = new THREE.LineBasicMaterial({ vertexColors: false, color: 0x00ffff, transparent: true, opacity: 0.8 })
+      geo = new THREE.BufferGeometry()
+      positionArr = new Float32Array(expectedLength)
+      geo.setAttribute('position', new THREE.BufferAttribute(positionArr, 3))
+      const mat = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 })
       arc = new THREE.Line(geo, mat)
       this.angleArcs.set(c.id, arc)
       this.group.add(arc)
+    } else {
+      geo = arc.geometry as THREE.BufferGeometry
+      const existing = geo.attributes.position.array as Float32Array
+      if (existing.length !== expectedLength) {
+        geo.dispose()
+        positionArr = new Float32Array(expectedLength)
+        geo.setAttribute('position', new THREE.BufferAttribute(positionArr, 3))
+      } else {
+        positionArr = existing
+      }
     }
-    const geo = arc.geometry as THREE.BufferGeometry
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(points.length * 3), 3))
-    const arr = geo.attributes.position.array as Float32Array
-    for (let i = 0; i < points.length; i++) {
-      arr[i * 3] = points[i].x
-      arr[i * 3 + 1] = points[i].y
-      arr[i * 3 + 2] = points[i].z
+
+    let writeIdx = 0
+    const writeArc = (angle1: number, angle2: number) => {
+      for (let s = 0; s <= segments; s++) {
+        const t = angle1 + (angle2 - angle1) * s / segments
+        const cosT = Math.cos(t)
+        const sinT = Math.sin(t)
+        const x = ba.x
+        const y = ba.y
+        const z = ba.z
+        const ux = axis.x
+        const uy = axis.y
+        const uz = axis.z
+        const vx = x * cosT + (uy * z - uz * y) * sinT + ux * (ux * x + uy * y + uz * z) * (1 - cosT)
+        const vy = y * cosT + (uz * x - ux * z) * sinT + uy * (ux * x + uy * y + uz * z) * (1 - cosT)
+        const vz = z * cosT + (ux * y - uy * x) * sinT + uz * (ux * x + uy * y + uz * z) * (1 - cosT)
+        positionArr[writeIdx++] = bx + vx * ar
+        positionArr[writeIdx++] = by + vy * ar
+        positionArr[writeIdx++] = bz + vz * ar
+      }
     }
+    if (c.minAngle > 0) writeArc(0, c.minAngle)
+    writeArc(Math.max(0, c.minAngle), Math.min(endAngle, c.maxAngle))
+    if (c.maxAngle < Math.PI * 2) writeArc(c.maxAngle, Math.max(c.maxAngle, endAngle + 0.01))
+
+    geo.setDrawRange(0, writeIdx / 3 - 1)
     geo.attributes.position.needsUpdate = true
     geo.computeBoundingSphere()
   }

@@ -118,23 +118,51 @@ export default function TimelineBar() {
   const onClipImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    e.target.value = ''
+
+    if (file.name && !/\.json$/i.test(file.name)) {
+      setToast({ message: '无效的JSON格式', type: 'error' })
+      return
+    }
+
     const reader = new FileReader()
+    let handled = false
+
+    const handleError = (msg: string) => {
+      if (handled) return
+      handled = true
+      setToast({ message: msg, type: 'error' })
+    }
+
+    reader.onerror = () => handleError('读取文件失败')
+
     reader.onload = (evt) => {
+      if (handled) return
       try {
-        const data = JSON.parse(evt.target?.result as string)
-        const result = PlaybackRecorder.validateImportedClip(data)
-        if (!result.valid || !result.clip) {
-          setToast({ message: result.error ?? '导入失败', type: 'error' })
+        const text = (evt.target?.result ?? '') as string
+        if (!text) {
+          handleError('文件内容为空')
           return
         }
+        const data = JSON.parse(text)
+        const result = PlaybackRecorder.validateImportedClip(data)
+        if (!result.valid || !result.clip) {
+          handleError(result.error ?? '导入失败')
+          return
+        }
+        handled = true
         addRecordingClip(result.clip)
         setToast({ message: `导入成功：${result.clip.name}`, type: 'success' })
       } catch {
-        setToast({ message: '无效的JSON文件', type: 'error' })
+        handleError('无效的JSON格式')
       }
     }
-    reader.readAsText(file)
-    e.target.value = ''
+
+    try {
+      reader.readAsText(file)
+    } catch {
+      handleError('读取文件失败')
+    }
   }, [addRecordingClip, setToast])
 
   const onClipExport = useCallback(() => {
