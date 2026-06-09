@@ -6,6 +6,7 @@ import ParamPanel from '@/components/ParamPanel'
 import TimelineBar from '@/components/TimelineBar'
 import PresetPanel from '@/components/PresetPanel'
 import ExportPanel from '@/components/ExportPanel'
+import Toast from '@/components/ui/Toast'
 
 export default function EditorLayout() {
   const {
@@ -85,6 +86,7 @@ export default function EditorLayout() {
 
       <PresetPanel />
       <ExportPanel />
+      <Toast />
     </div>
   )
 }

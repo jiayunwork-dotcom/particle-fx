@@ -205,4 +205,56 @@ export class ParticlePool {
   isAlive(index: number): boolean {
     return index >= 0 && index < MAX_PARTICLES && this.alive[index] === 1
   }
+
+  setAliveListForPlayback(indices: number[]): void {
+    this.alive.fill(0)
+    this.isFixed.fill(0)
+    for (let i = 0; i < indices.length; i++) {
+      const idx = indices[i]
+      if (idx >= 0 && idx < MAX_PARTICLES) {
+        this.alive[idx] = 1
+      }
+    }
+    const listIdx = this.aliveList.indexOf(-1)
+    if (listIdx === -1 || this.aliveList.length !== indices.length) {
+      this.aliveList = [...indices]
+    }
+  }
+
+  setFixedListForPlayback(indices: number[]): void {
+    this.isFixed.fill(0)
+    for (let i = 0; i < indices.length; i++) {
+      const idx = indices[i]
+      if (idx >= 0 && idx < MAX_PARTICLES) {
+        this.isFixed[idx] = 1
+      }
+    }
+  }
+
+  setParticlePosition(index: number, x: number, y: number, z: number): void {
+    if (index < 0 || index >= MAX_PARTICLES) return
+    this.positions[index * 3] = x
+    this.positions[index * 3 + 1] = y
+    this.positions[index * 3 + 2] = z
+  }
+
+  setParticleVelocity(index: number, vx: number, vy: number, vz: number): void {
+    if (index < 0 || index >= MAX_PARTICLES) return
+    this.velocities[index * 3] = vx
+    this.velocities[index * 3 + 1] = vy
+    this.velocities[index * 3 + 2] = vz
+  }
+
+  prepareAliveForPlayback(aliveIndices: number[]): void {
+    const newAliveList: number[] = []
+    this.alive.fill(0)
+    for (let i = 0; i < aliveIndices.length; i++) {
+      const idx = aliveIndices[i]
+      if (idx >= 0 && idx < MAX_PARTICLES) {
+        this.alive[idx] = 1
+        newAliveList.push(idx)
+      }
+    }
+    this.aliveList = newAliveList
+  }
 }

@@ -19,7 +19,10 @@ export default function ParamPanel() {
     rightPanelOpen,
     updateEmitter,
     toggleRightPanel,
+    isPlaybackMode,
   } = useEditorStore()
+
+  const disabled = isPlaybackMode
 
   const emitter = useMemo(
     () => scene.emitters.find((e) => e.id === selectedEmitterId) ?? null,
@@ -105,9 +108,16 @@ export default function ParamPanel() {
   ]
 
   return (
-    <div className="flex flex-col w-[320px] bg-[#2d2d44] border-l border-[#1a1a2e] overflow-hidden">
+    <div className="relative flex flex-col w-[320px] bg-[#2d2d44] border-l border-[#1a1a2e] overflow-hidden">
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-[#1a1a2e]">
-        <span className="text-xs font-medium text-[#e0e0e0]">{emitter.name}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-[#e0e0e0]">{emitter.name}</span>
+          {disabled && (
+            <span className="px-1.5 py-0.5 text-[9px] rounded bg-amber-700/40 text-amber-300 border border-amber-600/50 font-medium">
+              回放中
+            </span>
+          )}
+        </div>
         <button
           onClick={toggleRightPanel}
           className="text-[#888] hover:text-[#00f0ff] transition-colors"
@@ -116,7 +126,7 @@ export default function ParamPanel() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
+      <div className={`flex-1 overflow-y-auto p-2 flex flex-col gap-2 ${disabled ? 'pointer-events-none opacity-70' : ''}`}>
         <FoldSection title="发射器" defaultOpen>
           <Select
             label="形状"

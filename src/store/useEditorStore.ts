@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { EmitterConfig, ForceField, CollisionPlane, ParticleScene, Constraint, ConstraintSolverConfig } from '@/types/particle'
+import type { EmitterConfig, ForceField, CollisionPlane, ParticleScene, Constraint, ConstraintSolverConfig, RecordingClip } from '@/types/particle'
 import { createDefaultEmitter } from '@/types/particle'
 
 interface EditorState {
@@ -14,6 +14,15 @@ interface EditorState {
   showExport: boolean
   leftPanelOpen: boolean
   rightPanelOpen: boolean
+  isRecording: boolean
+  recordingFrameInterval: number
+  recordingClips: RecordingClip[]
+  selectedClipId: string | null
+  isPlaybackMode: boolean
+  isPlaybackPlaying: boolean
+  currentPlaybackFrame: number
+  playbackSpeed: number
+  toast: { message: string; type: 'info' | 'success' | 'error' } | null
 }
 
 interface EditorActions {
@@ -47,13 +56,24 @@ interface EditorActions {
   toggleLeftPanel: () => void
   toggleRightPanel: () => void
   loadPreset: (scene: ParticleScene) => void
+  setRecording: (recording: boolean) => void
+  setRecordingFrameInterval: (k: number) => void
+  addRecordingClip: (clip: RecordingClip) => void
+  removeRecordingClip: (id: string) => void
+  selectRecordingClip: (id: string | null) => void
+  setPlaybackMode: (mode: boolean) => void
+  setPlaybackPlaying: (playing: boolean) => void
+  setCurrentPlaybackFrame: (frame: number) => void
+  setPlaybackSpeed: (speed: number) => void
+  setToast: (toast: { message: string; type: 'info' | 'success' | 'error' } | null) => void
+  clearToast: () => void
 }
 
 type EditorStore = EditorState & EditorActions
 
 const defaultEmitter = createDefaultEmitter()
 
-const initialState: ParticleScene = {
+const initialScene: ParticleScene = {
   emitters: [defaultEmitter],
   forceFields: [],
   collisions: [],
@@ -64,7 +84,7 @@ const initialState: ParticleScene = {
 }
 
 export const useEditorStore = create<EditorStore>()((set) => ({
-  scene: initialState,
+  scene: initialScene,
   selectedEmitterId: defaultEmitter.id,
   isPlaying: false,
   elapsedTime: 0,
@@ -75,6 +95,15 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   showExport: false,
   leftPanelOpen: true,
   rightPanelOpen: true,
+  isRecording: false,
+  recordingFrameInterval: 2,
+  recordingClips: [],
+  selectedClipId: null,
+  isPlaybackMode: false,
+  isPlaybackPlaying: false,
+  currentPlaybackFrame: 0,
+  playbackSpeed: 1,
+  toast: null,
 
   addEmitter: () =>
     set((state) => {
@@ -236,4 +265,49 @@ export const useEditorStore = create<EditorStore>()((set) => ({
       elapsedTime: 0,
       resetTrigger: state.resetTrigger + 1,
     })),
+
+  setRecording: (recording) => set({ isRecording: recording }),
+
+  setRecordingFrameInterval: (k) => set({ recordingFrameInterval: k }),
+
+  addRecordingClip: (clip) =>
+    set((state) => ({
+      recordingClips: [...state.recordingClips, clip],
+      selectedClipId: state.selectedClipId ?? clip.id,
+    })),
+
+  removeRecordingClip: (id) =>
+    set((state) => {
+      const newClips = state.recordingClips.filter((c) => c.id !== id)
+      return {
+        recordingClips: newClips,
+        selectedClipId: state.selectedClipId === id ? (newClips.length > 0 ? newClips[0].id : null) : state.selectedClipId,
+        isPlaybackMode: state.selectedClipId === id ? false : state.isPlaybackMode,
+        isPlaybackPlaying: state.selectedClipId === id ? false : state.isPlaybackPlaying,
+      }
+    }),
+
+  selectRecordingClip: (id) =>
+    set(() => ({
+      selectedClipId: id,
+      currentPlaybackFrame: 0,
+      isPlaybackPlaying: false,
+      isPlaybackMode: id !== null,
+    })),
+
+  setPlaybackMode: (mode) =>
+    set((state) => ({
+      isPlaybackMode: mode,
+      isPlaybackPlaying: mode ? state.isPlaybackPlaying : false,
+    })),
+
+  setPlaybackPlaying: (playing) => set({ isPlaybackPlaying: playing }),
+
+  setCurrentPlaybackFrame: (frame) => set({ currentPlaybackFrame: frame }),
+
+  setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
+
+  setToast: (toast) => set({ toast }),
+
+  clearToast: () => set({ toast: null }),
 }))

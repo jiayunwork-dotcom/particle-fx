@@ -137,6 +137,28 @@ export interface ParticleScene {
   customBgColor?: string
 }
 
+export interface ParticleSnapshot {
+  positions: number[]
+  velocities: number[]
+  aliveList: number[]
+  brokenConstraintIds: string[]
+  fixedParticles: number[]
+  timestamp: number
+}
+
+export interface RecordingClip {
+  id: string
+  name: string
+  createdAt: number
+  frameInterval: number
+  particleCount: number
+  totalFrames: number
+  duration: number
+  frames: ParticleSnapshot[]
+  lazyLoaded?: boolean
+  loadedFrames?: Set<number>
+}
+
 export function createDefaultCurve(): Curve {
   return {
     type: 'smooth',

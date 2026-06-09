@@ -6,6 +6,7 @@ import { ParticleSystem } from '@/engine/ParticleSystem'
 import { useEditorStore } from '@/store/useEditorStore'
 import { createEmitterWireframe, createForceFieldHelper, createCollisionPlaneHelper, ConstraintVisualizer } from '@/renderer/SceneHelper'
 import type { EmitterConfig } from '@/types/particle'
+import { PlaybackRecorder } from '@/engine/PlaybackRecorder'
 
 export default function Viewport() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -15,6 +16,11 @@ export default function Viewport() {
   const lastTimeRef = useRef<number>(0)
   const customTextureRef = useRef<THREE.Texture | null>(null)
   const constraintVisRef = useRef<ConstraintVisualizer | null>(null)
+  const recorderRef = useRef<PlaybackRecorder | null>(null)
+  const wasRecordingRef = useRef(false)
+  const prevIsPlaybackModeRef = useRef(false)
+  const playbackAccumRef = useRef(0)
+  const lastFpsForRecordingRef = useRef(60)
   const [fps, setFps] = useState(0)
   const [particleCount, setParticleCount] = useState(0)
   const fpsFrames = useRef(0)
@@ -26,7 +32,6 @@ export default function Viewport() {
     background,
     helpersVisible,
     resetTrigger,
-    setConstraints,
   } = useEditorStore()
 
   const updateRendererFromEmitter = useCallback((emitter: EmitterConfig | undefined) => {
@@ -63,6 +68,35 @@ export default function Viewport() {
     }
   }, [])
 
+  const applyPlaybackFrame = useCallback((system: ParticleSystem) => {
+    const store = useEditorStore.getState()
+    const selectedClip = store.recordingClips.find((c) => c.id === store.selectedClipId)
+    if (!selectedClip || selectedClip.frames.length === 0) return
+    const pool = system.getPool()
+    const totalFrames = selectedClip.totalFrames
+    const tf = Math.max(0, Math.min(totalFrames - 1, store.currentPlaybackFrame))
+    const floorFrame = Math.max(0, Math.floor(tf))
+    const ceilFrame = Math.min(totalFrames - 1, Math.ceil(tf))
+    const f0 = selectedClip.frames[floorFrame]
+    const f1 = selectedClip.frames[ceilFrame]
+    if (!f0 || !f1) return
+    const aliveSet = new Set<number>()
+    f0.aliveList.forEach((i) => aliveSet.add(i))
+    f1.aliveList.forEach((i) => aliveSet.add(i))
+    const aliveArr = Array.from(aliveSet)
+    pool.prepareAliveForPlayback(aliveArr)
+    const fixedSet = new Set<number>()
+    f0.fixedParticles.forEach((i) => fixedSet.add(i))
+    f1.fixedParticles.forEach((i) => fixedSet.add(i))
+    pool.setFixedListForPlayback(Array.from(fixedSet))
+    for (let pi = 0; pi < aliveArr.length; pi++) {
+      const idx = aliveArr[pi]
+      const pos = PlaybackRecorder.interpolatePosition(selectedClip, tf, idx)
+      if (!pos) continue
+      pool.setParticlePosition(idx, pos.x, pos.y, pos.z)
+    }
+  }, [])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -73,8 +107,10 @@ export default function Viewport() {
 
     const renderer = new ParticleRenderer(canvas)
     const system = new ParticleSystem()
+    const recorder = new PlaybackRecorder()
     rendererRef.current = renderer
     systemRef.current = system
+    recorderRef.current = recorder
 
     const constraintVis = new ConstraintVisualizer()
     constraintVisRef.current = constraintVis
@@ -98,6 +134,8 @@ export default function Viewport() {
     lastTimeRef.current = performance.now()
     fpsTime.current = performance.now()
     fpsFrames.current = 0
+    wasRecordingRef.current = false
+    prevIsPlaybackModeRef.current = false
 
     const animate = (time: number) => {
       const rawDt = (time - lastTimeRef.current) / 1000
@@ -105,16 +143,84 @@ export default function Viewport() {
       const dt = Math.min(rawDt, 0.05)
 
       const currentStore = useEditorStore.getState()
-      if (currentStore.isPlaying) {
-        system.update(dt)
-        currentStore.setElapsedTime(currentStore.elapsedTime + dt)
+      const {
+        isPlaying,
+        isRecording,
+        recordingFrameInterval,
+        isPlaybackMode,
+        isPlaybackPlaying,
+        playbackSpeed,
+        currentPlaybackFrame,
+        setRecording,
+        addRecordingClip,
+        setToast,
+        setCurrentPlaybackFrame,
+        setPlaybackPlaying,
+        setElapsedTime,
+        setConstraints,
+        selectedClipId,
+        recordingClips,
+        scene,
+      } = currentStore
 
-        if (system.didConstraintsChange()) {
-          const cur = system.getConstraints()
-          const sceneC = currentStore.scene.constraints
-          if (cur.length !== sceneC.length) {
-            currentStore.setConstraints([...cur])
+      if (isPlaybackMode && !prevIsPlaybackModeRef.current) {
+        prevIsPlaybackModeRef.current = true
+        playbackAccumRef.current = 0
+      } else if (!isPlaybackMode && prevIsPlaybackModeRef.current) {
+        prevIsPlaybackModeRef.current = false
+      }
+
+      if (!isPlaybackMode) {
+        if (wasRecordingRef.current && !isRecording) {
+          wasRecordingRef.current = false
+          const clip = recorder.stop()
+          setRecording(false)
+          if (clip) {
+            addRecordingClip(clip)
+            setToast({ message: `录制完成：${clip.name} (${clip.totalFrames}帧)`, type: 'success' })
           }
+        }
+        if (!wasRecordingRef.current && isRecording) {
+          wasRecordingRef.current = true
+          recorder.start(lastFpsForRecordingRef.current, recordingFrameInterval)
+        }
+      }
+
+      let appliedPlayback = false
+      const activeClip = recordingClips.find((c) => c.id === selectedClipId)
+      if (isPlaybackMode && activeClip) {
+        if (isPlaybackPlaying) {
+          playbackAccumRef.current += dt * playbackSpeed * (60 / Math.max(1, activeClip.frameInterval))
+          let newFrame = currentPlaybackFrame + playbackAccumRef.current
+          playbackAccumRef.current = 0
+          if (newFrame >= activeClip.totalFrames - 1) {
+            newFrame = activeClip.totalFrames - 1
+            setPlaybackPlaying(false)
+          }
+          if (newFrame !== currentPlaybackFrame) {
+            setCurrentPlaybackFrame(newFrame)
+          }
+        }
+        applyPlaybackFrame(system)
+        appliedPlayback = true
+      } else {
+        if (isPlaying) {
+          system.update(dt)
+          setElapsedTime(currentStore.elapsedTime + dt)
+          if (system.didConstraintsChange()) {
+            const cur = system.getConstraints()
+            const sceneC = scene.constraints
+            if (cur.length !== sceneC.length) {
+              setConstraints([...cur])
+            }
+          }
+        }
+        if (isRecording && recorder && wasRecordingRef.current) {
+          recorder.capture(
+            system.getPool(),
+            scene.constraints,
+            scene.fixedParticles,
+          )
         }
       }
 
@@ -122,8 +228,11 @@ export default function Viewport() {
       renderer.updateFromPool(pool)
       renderer.updateTrailsFromPool(pool)
 
-      if (constraintVisRef.current && useEditorStore.getState().helpersVisible) {
-        constraintVisRef.current.update(useEditorStore.getState().scene.constraints, pool)
+      if (constraintVisRef.current && helpersVisible) {
+        constraintVisRef.current.update(
+          appliedPlayback ? scene.constraints : scene.constraints,
+          pool,
+        )
       }
 
       renderer.render()
@@ -131,8 +240,10 @@ export default function Viewport() {
       fpsFrames.current++
       const fpsElapsed = time - fpsTime.current
       if (fpsElapsed >= 500) {
-        setFps(Math.round((fpsFrames.current / fpsElapsed) * 1000))
+        const computedFps = Math.round((fpsFrames.current / fpsElapsed) * 1000)
+        setFps(computedFps)
         setParticleCount(pool.getCount())
+        lastFpsForRecordingRef.current = Math.max(10, computedFps)
         fpsFrames.current = 0
         fpsTime.current = time
       }
@@ -155,8 +266,9 @@ export default function Viewport() {
       renderer.dispose()
       rendererRef.current = null
       systemRef.current = null
+      recorderRef.current = null
     }
-  }, [updateRendererFromEmitter])
+  }, [updateRendererFromEmitter, applyPlaybackFrame, helpersVisible])
 
   useEffect(() => {
     const system = systemRef.current
