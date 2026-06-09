@@ -167,6 +167,10 @@ export class ParticleSystem {
     return this.emitters.size
   }
 
+  getEmitterIds(): string[] {
+    return Array.from(this.emitters.keys())
+  }
+
   reset(): void {
     this.pool.reset()
     this.emitters.forEach(emitter => emitter.reset())

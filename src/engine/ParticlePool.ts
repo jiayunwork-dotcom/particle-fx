@@ -64,9 +64,10 @@ export class ParticlePool {
     this.trailEmitterKeys = new Uint32Array(N)
 
     this.freeList = []
-    for (let i = N - 1; i >= 0; i--) {
+    for (let i = 0; i < N; i++) {
       this.freeList.push(i)
     }
+    this.freeList.reverse()
     this.aliveList = []
     this.trailAliveList = []
   }

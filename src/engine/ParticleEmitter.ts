@@ -503,12 +503,15 @@ export class ParticleEmitter {
   }
 
   setConfig(config: EmitterConfig): void {
+    const idChanged = this.config.id !== config.id
     this.config = config
     this.ownerKey = hashCode(config.id)
-    this.elapsed = 0
-    this.emitAccumulator = 0
-    this.burstFired = false
-    this.finished = false
+    if (idChanged) {
+      this.elapsed = 0
+      this.emitAccumulator = 0
+      this.burstFired = false
+      this.finished = false
+    }
   }
 
   isFinished(): boolean {

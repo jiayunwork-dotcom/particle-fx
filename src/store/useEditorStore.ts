@@ -229,5 +229,11 @@ export const useEditorStore = create<EditorStore>()((set) => ({
 
   toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
 
-  loadPreset: (scene) => set({ scene, selectedEmitterId: scene.emitters.length > 0 ? scene.emitters[0].id : null, elapsedTime: 0 }),
+  loadPreset: (scene) =>
+    set((state) => ({
+      scene,
+      selectedEmitterId: scene.emitters.length > 0 ? scene.emitters[0].id : null,
+      elapsedTime: 0,
+      resetTrigger: state.resetTrigger + 1,
+    })),
 }))

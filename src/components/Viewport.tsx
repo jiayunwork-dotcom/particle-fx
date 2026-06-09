@@ -162,10 +162,17 @@ export default function Viewport() {
     const system = systemRef.current
     const renderer = rendererRef.current
     if (!system) return
+    const validIds = new Set<string>()
     scene.emitters.forEach((e) => {
+      validIds.add(e.id)
       system.updateEmitter(e)
       if (renderer) {
         renderer.registerEmitterConfig(e)
+      }
+    })
+    system.getEmitterIds().forEach((existingId) => {
+      if (!validIds.has(existingId)) {
+        system.removeEmitter(existingId)
       }
     })
     system.setForceFields(scene.forceFields)

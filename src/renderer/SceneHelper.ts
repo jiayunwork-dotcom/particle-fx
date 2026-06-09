@@ -175,17 +175,24 @@ export function createAreaConstraintHelper(area: AreaConstraint): THREE.LineSegm
   return lines
 }
 
+const _stressResult = new THREE.Color()
+const _stressColors = [
+  new THREE.Color(0x00ff44),
+  new THREE.Color(0x88ff00),
+  new THREE.Color(0xffff00),
+  new THREE.Color(0xff2222),
+]
 function stressColor(stress: number): THREE.Color {
   stress = Math.max(0, Math.min(1, stress))
   if (stress < 0.33) {
     const t = stress / 0.33
-    return new THREE.Color(0x00ff44).lerp(new THREE.Color(0x88ff00), t)
+    return _stressResult.copy(_stressColors[0]).lerp(_stressColors[1], t)
   } else if (stress < 0.66) {
     const t = (stress - 0.33) / 0.33
-    return new THREE.Color(0x88ff00).lerp(new THREE.Color(0xffff00), t)
+    return _stressResult.copy(_stressColors[1]).lerp(_stressColors[2], t)
   } else {
     const t = (stress - 0.66) / 0.34
-    return new THREE.Color(0xffff00).lerp(new THREE.Color(0xff2222), t)
+    return _stressResult.copy(_stressColors[2]).lerp(_stressColors[3], t)
   }
 }
 
